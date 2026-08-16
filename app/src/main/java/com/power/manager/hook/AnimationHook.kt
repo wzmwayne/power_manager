@@ -3,6 +3,7 @@ package com.power.manager.hook
 import com.power.manager.core.ConfigProvider
 import com.power.manager.util.LogUtil
 import de.robv.android.xposed.XC_MethodHook
+import de.robv.android.xposed.XposedBridge
 import de.robv.android.xposed.XposedHelpers
 import de.robv.android.xposed.callbacks.XC_LoadPackage
 
@@ -10,7 +11,7 @@ object AnimationHook {
     fun hook(lpparam: XC_LoadPackage.LoadPackageParam) {
         try {
             val cls = Class.forName("com.android.server.wm.WindowManagerService", false, lpparam.classLoader)
-            XposedHelpers.hookAllMethods(
+            XposedBridge.hookAllMethods(
                 cls,
                 "setAnimationScales",
                 object : XC_MethodHook() {

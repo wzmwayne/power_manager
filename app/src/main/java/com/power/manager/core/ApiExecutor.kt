@@ -2,7 +2,6 @@ package com.power.manager.core
 
 import android.bluetooth.BluetoothAdapter
 import android.content.Context
-import android.net.NetworkPolicyManager
 import android.provider.Settings
 import android.util.Log
 
@@ -87,10 +86,11 @@ object ApiExecutor {
     fun restrictUidBackground(uid: Int, restrict: Boolean): Boolean {
         return try {
             val ctx = systemContext() ?: return false
-            val npm = NetworkPolicyManager.from(ctx)
-            val method = NetworkPolicyManager::class.java
-                .getMethod("setUidPolicy", Integer.TYPE, Integer.TYPE)
-            method.invoke(npm, uid, if (restrict) 4 else 0)
+            val cls = Class.forName("android.net.NetworkPolicyManager")
+            val from = cls.getMethod("from", Context::class.java)
+            val npm = from.invoke(null, ctx)
+            val setUid = cls.getMethod("setUidPolicy", Integer.TYPE, Integer.TYPE)
+            setUid.invoke(npm, uid, if (restrict) 4 else 0)
             true
         } catch (e: Throwable) {
             false

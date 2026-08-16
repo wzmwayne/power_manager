@@ -1,5 +1,6 @@
 package com.power.manager.core
 
+import com.power.manager.data.CpuUtil
 import java.io.File
 import java.util.concurrent.TimeUnit
 

@@ -3,6 +3,7 @@ package com.power.manager.hook
 import com.power.manager.core.ConfigProvider
 import com.power.manager.util.LogUtil
 import de.robv.android.xposed.XC_MethodHook
+import de.robv.android.xposed.XposedBridge
 import de.robv.android.xposed.XposedHelpers
 import de.robv.android.xposed.callbacks.XC_LoadPackage
 
@@ -21,8 +22,8 @@ object BrightnessHook {
                     }
                 }
             }
-            XposedHelpers.hookAllMethods(cls, "setBrightness", cb)
-            XposedHelpers.hookAllMethods(cls, "setTemporaryBrightness", cb)
+            XposedBridge.hookAllMethods(cls, "setBrightness", cb)
+            XposedBridge.hookAllMethods(cls, "setTemporaryBrightness", cb)
         } catch (e: Throwable) {
             LogUtil.e(e, "BrightnessHook 注册失败")
         }

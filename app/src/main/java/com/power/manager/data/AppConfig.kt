@@ -61,7 +61,7 @@ data class AppConfig(
                 if (tj != null) {
                     for (k in tj.keys()) {
                         val id = k.toIntOrNull() ?: continue
-                        t[id] = Template.fromJson(tj.optJSONObject(k))
+                        tj.optJSONObject(k)?.let { t[id] = Template.fromJson(it) }
                     }
                 }
                 for (b in listOf(Template.BUILTIN_NORMAL, Template.BUILTIN_SAVING, Template.BUILTIN_ULTRA)) {
@@ -81,7 +81,7 @@ data class AppConfig(
                 }
                 val overrides = mutableMapOf<String, Template>()
                 val oj = o.optJSONObject("overrides")
-                if (oj != null) for (k in oj.keys()) overrides[k] = Template.fromJson(oj.optJSONObject(k))
+                if (oj != null) for (k in oj.keys()) oj.optJSONObject(k)?.let { overrides[k] = Template.fromJson(it) }
                 AppConfig(
                     templates = t,
                     currentTemplateId = o.optInt("current", -3),

@@ -42,12 +42,12 @@ object CpuUtil {
                 -1 -> 0.4
                 else -> 0.7
             }
-            (max * ratio)
+            (max * ratio).toLong()
         } else {
             tpl.cpuFreq.toLong()
         }
         if (freq > max) return -1
-        val threshold = max * 0.2
+        val threshold = (max * 0.2).toLong()
         return if (freq < threshold) -1 else freq.toInt()
     }
 }

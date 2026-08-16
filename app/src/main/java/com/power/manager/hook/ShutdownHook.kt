@@ -3,6 +3,7 @@ package com.power.manager.hook
 import com.power.manager.core.EmergencyGuard
 import com.power.manager.util.LogUtil
 import de.robv.android.xposed.XC_MethodHook
+import de.robv.android.xposed.XposedBridge
 import de.robv.android.xposed.XposedHelpers
 import de.robv.android.xposed.callbacks.XC_LoadPackage
 
@@ -19,8 +20,8 @@ object ShutdownHook {
                     }
                 }
             }
-            XposedHelpers.hookAllMethods(cls, "shutdown", cb)
-            XposedHelpers.hookAllMethods(cls, "shutdownOrRebootInternal", cb)
+            XposedBridge.hookAllMethods(cls, "shutdown", cb)
+            XposedBridge.hookAllMethods(cls, "shutdownOrRebootInternal", cb)
         } catch (e: Throwable) {
             LogUtil.e(e, "ShutdownHook 注册失败")
         }

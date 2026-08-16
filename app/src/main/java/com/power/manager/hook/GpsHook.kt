@@ -4,6 +4,7 @@ import android.location.Location
 import com.power.manager.core.ConfigProvider
 import com.power.manager.util.LogUtil
 import de.robv.android.xposed.XC_MethodHook
+import de.robv.android.xposed.XposedBridge
 import de.robv.android.xposed.XposedHelpers
 import de.robv.android.xposed.callbacks.XC_LoadPackage
 
@@ -15,7 +16,7 @@ object GpsHook {
         try {
             val cls = Class.forName("com.android.server.location.LocationManagerService", false, lpparam.classLoader)
 
-            XposedHelpers.hookAllMethods(cls, "requestLocationUpdates", object : XC_MethodHook() {
+            XposedBridge.hookAllMethods(cls, "requestLocationUpdates", object : XC_MethodHook() {
                 override fun beforeHookedMethod(param: MethodHookParam) {
                     try {
                         val pkg = extractPackage(param) ?: return
@@ -52,9 +53,9 @@ object GpsHook {
                     }
                 }
             }
-            XposedHelpers.hookAllMethods(cls, "getLastLocation", getLast)
-            XposedHelpers.hookAllMethods(cls, "getLastKnownLocation", getLast)
-            XposedHelpers.hookAllMethods(cls, "getCurrentLocation", object : XC_MethodHook() {
+            XposedBridge.hookAllMethods(cls, "getLastLocation", getLast)
+            XposedBridge.hookAllMethods(cls, "getLastKnownLocation", getLast)
+            XposedBridge.hookAllMethods(cls, "getCurrentLocation", object : XC_MethodHook() {
                 override fun beforeHookedMethod(param: MethodHookParam) {
                     try {
                         val pkg = extractPackage(param) ?: return

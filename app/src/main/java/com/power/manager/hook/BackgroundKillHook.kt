@@ -8,6 +8,7 @@ import com.power.manager.core.Protection
 import com.power.manager.core.StrategyExecutor
 import com.power.manager.util.LogUtil
 import de.robv.android.xposed.XC_MethodHook
+import de.robv.android.xposed.XposedBridge
 import de.robv.android.xposed.XposedHelpers
 import de.robv.android.xposed.callbacks.XC_LoadPackage
 
@@ -20,7 +21,7 @@ object BackgroundKillHook {
     fun hook(lpparam: XC_LoadPackage.LoadPackageParam) {
         try {
             val cls = Class.forName("com.android.server.wm.ActivityTaskManagerService", false, lpparam.classLoader)
-            XposedHelpers.hookAllMethods(
+            XposedBridge.hookAllMethods(
                 cls,
                 "setResumedActivityUncheckLocked",
                 object : XC_MethodHook() {
@@ -49,11 +50,11 @@ object BackgroundKillHook {
         return try {
             val arg = param.args.getOrNull(0) ?: return null
             try {
-                XposedHelpers.getStringField(arg, "packageName")
+                XposedHelpers.getObjectField(arg, "packageName") as? String
             } catch (e: Throwable) {
                 try {
                     val info = XposedHelpers.getObjectField(arg, "info")
-                    XposedHelpers.getStringField(info, "packageName")
+                    XposedHelpers.getObjectField(info, "packageName") as? String
                 } catch (e2: Throwable) {
                     null
                 }
