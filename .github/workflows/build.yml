@@ -37,7 +37,7 @@ jobs:
 
       - name: 提取版本号
         run: |
-          VERSION=$(./gradlew -q :app:properties | grep '^versionName:' | awk '{print $2}')
+          VERSION=$(./gradlew -q :app:printVersionName | tail -n 1)
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
 
       - name: 上传 APK 产物

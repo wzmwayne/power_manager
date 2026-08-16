@@ -95,7 +95,11 @@ system_server、launcher、SystemUI、电话、输入法。另有硬豁免：电
 
 - 文件：`.github/workflows/build.yml`
 - 触发：push / workflow_dispatch
-- 产物：`app/build/outputs/apk/debug/app-debug.apk`，artifact 命名 `power_manager_v{version}.apk`
+- 产物：`app/build/outputs/apk/debug/app-debug.apk`，artifact 命名 `power_manager_v{version}.apk`（版本号由 `:app:printVersionName` 任务输出）
+- 工作流全程仅 debug（assembleDebug + 上传 APK），**无任何发行版/Release 相关步骤**
+- 依赖仓库：Xposed api 走 `https://api.xposed.info/`（jcenter 已死）
+- `gradle.properties`：启用 `org.gradle.caching`，**禁用 `configuration-cache`**（与 AGP 8.7.3 冲突）
+- 构建状态：2026-08-16 修复后 CI 全绿（8 步全通过，约 1m30s）
 
 ## 决策日志
 
@@ -106,3 +110,8 @@ system_server、launcher、SystemUI、电话、输入法。另有硬豁免：电
 | 2026-08-16 | 后台网络=单应用 UID 限制；CPU=还原+60s 定时重刷；熔断时 CPU 强制恢复 |
 | 2026-08-16 | 模式指示器=ContentProvider 实时读；模板存储=JSON+SharedPreferences |
 | 2026-08-16 | 应用显示名 Power Manager；README 对齐 assembleDebug |
+| 2026-08-16 | 作用域白名单防护（仅注入 android/系统设置/电话，实际仅 system_server 注册 Hook） |
+| 2026-08-16 | api:82 仅暴露 XposedBridge.hookAllMethods，统一用 XposedBridge；XSharedPreferences 存模板 |
+| 2026-08-16 | NetworkPolicyManager 不在公开 SDK，后台网络改纯反射 |
+| 2026-08-16 | 日志走内部文件 + logcat PowerManager + XposedBridge；App 日志页可复制 |
+| 2026-08-16 | 工作流纯 debug 无发行版；版本号经 printVersionName 任务读取 |

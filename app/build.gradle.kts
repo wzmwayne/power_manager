@@ -59,3 +59,9 @@ dependencies {
 
     testImplementation(libs.junit)
 }
+
+tasks.register("printVersionName") {
+    doLast {
+        println(android.defaultConfig.versionName)
+    }
+}
