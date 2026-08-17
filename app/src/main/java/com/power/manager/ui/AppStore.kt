@@ -2,24 +2,18 @@ package com.power.manager.ui
 
 import android.content.Context
 import android.content.SharedPreferences
-import com.power.manager.core.EmergencyGuard
-import com.power.manager.core.RootChecker
-import com.power.manager.core.RootExecutor
 import com.power.manager.data.AppConfig
-import com.power.manager.data.CpuUtil
 import com.power.manager.data.Template
-import java.io.File
 
 object AppStore {
     private const val PREFS = "config"
     private const val KEY = "config"
     private const val KEY_CONSENT = "consent"
     private lateinit var prefs: SharedPreferences
-    private var prefsDir: File? = null
 
     fun init(ctx: Context) {
+        if (::prefs.isInitialized) return
         prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        prefsDir = File(ctx.applicationInfo.dataDir, "shared_prefs")
     }
 
     fun isConsented(): Boolean = prefs.getBoolean(KEY_CONSENT, false)
@@ -36,43 +30,13 @@ object AppStore {
 
     fun save(cfg: AppConfig) {
         prefs.edit().putString(KEY, cfg.toJson()).commit()
-        makeSharedReadable()
     }
 
     /** 深拷贝：可变容器全部换新实例，避免就地修改状态对象导致 Compose 不重组。 */
     fun copyOf(cfg: AppConfig): AppConfig = cfg.copy(
         templates = HashMap(cfg.templates),
-        appList = HashSet(cfg.appList),
         rules = HashMap(cfg.rules)
     )
-
-    /** MODE_PRIVATE 落盘权限为 600，system_server 无法读取。必须每次保存后经 Root 开放目录与文件读取，否则模块读不到配置。 */
-    private fun makeSharedReadable() {
-        try {
-            val dir = prefsDir ?: return
-            val xml = File(dir, "config.xml")
-            RootExecutor.run(
-                "mkdir -p ${dir.absolutePath}; chmod 777 ${dir.absolutePath}; chmod 666 ${xml.absolutePath}"
-            )
-        } catch (e: Throwable) {
-        }
-    }
-
-    fun ensureShared(ctx: Context) {
-        try {
-            val files = ctx.filesDir
-            files.mkdirs()
-            val lg = File(files, "power_manager.log")
-            if (!lg.exists()) lg.writeText("")
-            val sp = File(ctx.applicationInfo.dataDir, "shared_prefs")
-            RootExecutor.run(
-                "mkdir -p ${sp.absolutePath}; chmod 777 ${files.absolutePath}; " +
-                    "chmod 777 ${sp.absolutePath}; " +
-                    "chmod 666 ${lg.absolutePath}"
-            )
-        } catch (e: Throwable) {
-        }
-    }
 
     fun nextTemplateId(cfg: AppConfig): Int {
         var max = -1
@@ -85,32 +49,11 @@ object AppStore {
         return source.copyWith(id, name)
     }
 
+    /** 应用模板：写入模板并激活。策略执行由 system_server 侧经 ConfigChannel 读取配置完成。 */
     fun applyTemplate(cfg: AppConfig, tpl: Template) {
-        sanitizeAllCpu(cfg)
-        val root = RootChecker.isRootAvailable()
         cfg.templates[tpl.id] = tpl
         cfg.currentTemplateId = tpl.id
         save(cfg)
-        val effectiveFreq = if (root) CpuUtil.resolveCpuFreq(tpl) else -1
-        if (tpl.cpuFreq != -1) RootExecutor.writeCpuMaxFreq(effectiveFreq)
-        if (tpl.batterySaver) RootExecutor.run("settings put global low_power 1")
-    }
-
-    /** 切换模板前强制审查所有模板的 CPU 限制值：哨兵(小数倍率)自动解析为真实 KHz，非法值修复为安全值，防止危险频率落入内核。 */
-    fun sanitizeAllCpu(cfg: AppConfig) {
-        var changed = false
-        for ((id, t) in cfg.templates) {
-            val safe = when {
-                t.cpuFreq == -1 -> -1
-                t.cpuFreq == -2 -> CpuUtil.resolveCpuFreq(t)
-                else -> CpuUtil.sanitize(t.cpuFreq.toLong())
-            }
-            if (safe != t.cpuFreq) {
-                cfg.templates[id] = t.copy(cpuFreq = safe)
-                changed = true
-            }
-        }
-        if (changed) save(cfg)
     }
 
     fun deleteTemplate(cfg: AppConfig, tpl: Template) {
@@ -126,8 +69,4 @@ object AppStore {
         cfg.currentTemplateId = -3
         save(cfg)
     }
-
-    fun clearEmergency(): Boolean = EmergencyGuard.clearFallback()
-
-    fun isRoot(): Boolean = RootChecker.isRootAvailable()
 }

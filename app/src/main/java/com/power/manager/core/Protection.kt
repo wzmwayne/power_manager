@@ -16,7 +16,7 @@ object Protection {
 
     fun isProtected(pkg: String): Boolean {
         if (pkg.isBlank()) return true
-        if (pkg == ModuleFiles.PACKAGE) return true
+        if (pkg == Const.PACKAGE) return true
         return hardExempt.contains(pkg)
     }
 }

@@ -32,11 +32,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import com.power.manager.core.ModuleFiles
+import com.power.manager.ui.AppLogStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
-import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -75,7 +74,7 @@ fun LogScreen(padding: PaddingValues, onBack: () -> Unit) {
     ) { inner ->
         Column(Modifier.fillMaxSize().padding(padding).padding(inner)) {
             Text(
-                "日志文件：${ModuleFiles.logFile()}（可用 adb logcat -s PowerManager 查看，或 adb shell cat 该路径）",
+                "日志文件：" + AppLogStore.logFile() + "（可用 adb logcat -s PowerManager 查看，或 adb shell cat 该路径）",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.outline,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
@@ -94,11 +93,4 @@ fun LogScreen(padding: PaddingValues, onBack: () -> Unit) {
     }
 }
 
-fun readLogFile(): String {
-    return try {
-        val f = File(ModuleFiles.logFile())
-        if (f.exists()) f.readText() else "（暂无日志，重启或触发策略后生成）"
-    } catch (e: Throwable) {
-        "（读取日志失败：${e.message}）"
-    }
-}
+fun readLogFile(): String = AppLogStore.read()

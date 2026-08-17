@@ -1,43 +1,37 @@
 package com.power.manager
 
-import com.power.manager.core.ConfigProvider
-import com.power.manager.core.EmergencyGuard
-import com.power.manager.core.ModuleScheduler
-import com.power.manager.core.ScopeGuard
-import com.power.manager.hook.AnimationHook
-import com.power.manager.hook.BackgroundKillHook
-import com.power.manager.hook.BrightnessHook
-import com.power.manager.hook.GpsHook
-import com.power.manager.hook.ShutdownHook
-import com.power.manager.util.LogUtil
+import com.power.manager.core.AppLog
 import de.robv.android.xposed.IXposedHookLoadPackage
 import de.robv.android.xposed.callbacks.XC_LoadPackage
 
+/**
+ * 模块入口：仅对声明的作用域包执行注入检查。
+ * 当前重构目标态：配置/日志通道（ContentProvider）由 App 侧承载，system_server
+ * 侧暂不注册 Hook（Hook 面精简重构中），入口仅保留作用域白名单与日志。
+ */
 class PowerManagerModule : IXposedHookLoadPackage {
     override fun handleLoadPackage(lpparam: XC_LoadPackage.LoadPackageParam) {
         try {
-            // 作用域白名单防护：仅允许注入声明的系统作用域，绝不 Hook 其他应用
-            if (!ScopeGuard.isAllowed(lpparam.packageName)) {
-                LogUtil.d("跳过非作用域进程：${lpparam.packageName}")
+            if (!ALLOWED_SCOPES.contains(lpparam.packageName)) {
+                AppLog.d("跳过非作用域进程：" + lpparam.packageName)
                 return
             }
-
-            // 仅对 system_server 注册 Hook（其余作用域包暂不注册，仅为兼容保留）
-            if (lpparam.packageName != "android") return
-            LogUtil.i("Power Manager 注入 system_server")
-
-            ConfigProvider.load()
-            EmergencyGuard.checkAndReset()
-
-            BackgroundKillHook.hook(lpparam)
-            BrightnessHook.hook(lpparam)
-            AnimationHook.hook(lpparam)
-            GpsHook.hook(lpparam)
-            ShutdownHook.hook(lpparam)
-
-            ModuleScheduler.start()
+            if (lpparam.packageName != "android") {
+                AppLog.d("作用域包暂不注册 Hook：" + lpparam.packageName)
+                return
+            }
+            AppLog.i("Power Manager 注入 system_server")
         } catch (e: Throwable) {
-            LogUtil.e(e, "handleLoadPackage 异常，已防止错误扩散")
+            AppLog.e(e, "handleLoadPackage 异常，已防止错误扩散")
         }
+    }
+
+    companion object {
+        /** 与 AndroidManifest xposedscope 一致的作用域白名单。 */
+        private val ALLOWED_SCOPES = setOf(
+            "android",
+            "com.android.providers.settings",
+            "com.android.phone"
+        )
     }
 }

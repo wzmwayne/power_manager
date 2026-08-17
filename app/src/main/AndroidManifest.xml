@@ -21,6 +21,11 @@
             android:name="xposedscope"
             android:value="android;com.android.providers.settings;com.android.phone" />
 
+        <provider
+            android:name=".ui.AppConfigProvider"
+            android:authorities="com.power.manager"
+            android:exported="true" />
+
         <activity
             android:name=".ui.MainActivity"
             android:exported="true"

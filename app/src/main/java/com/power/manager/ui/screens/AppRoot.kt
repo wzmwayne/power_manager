@@ -29,15 +29,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import com.power.manager.core.HardwareProbe
 import com.power.manager.data.Template
 import com.power.manager.ui.AppStore
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 
 enum class Tab { HOME, SETTINGS, LOG }
 
@@ -51,16 +46,9 @@ sealed class Route {
 fun AppRoot() {
     var consented by remember { mutableStateOf(AppStore.isConsented()) }
     if (!consented) {
-        val ctx = LocalContext.current
         ConsentScreen(onAllow = {
             AppStore.setConsented()
             consented = true
-            CoroutineScope(Dispatchers.IO).launch {
-                try {
-                    HardwareProbe.scan(ctx)
-                } catch (e: Throwable) {
-                }
-            }
         })
         return
     }

@@ -5,10 +5,9 @@ import org.json.JSONObject
 data class Template(
     val id: Int,
     val name: String,
-    val maxBg: Int = -1,
     val killDelay: Int = -1,
     val targetFps: Int = -1,
-    val cpuFreq: Int = -1,
+    val cpuThrottle: Int = 0,
     val brightnessCap: Int = -1,
     val animOff: Boolean = false,
     val gpsPolicy: Int = 2,
@@ -23,10 +22,9 @@ data class Template(
         val o = JSONObject()
         o.put("id", id)
         o.put("name", name)
-        o.put("max_bg", maxBg)
         o.put("kill_delay", killDelay)
         o.put("target_fps", targetFps)
-        o.put("cpu_freq", cpuFreq)
+        o.put("cpu_throttle", cpuThrottle)
         o.put("brightness_cap", brightnessCap)
         o.put("anim_off", if (animOff) 1 else 0)
         o.put("gps_policy", gpsPolicy)
@@ -43,14 +41,14 @@ data class Template(
 
         val BUILTIN_SAVING = Template(
             -2, "省电模式",
-            maxBg = 3, killDelay = 120, targetFps = 60, cpuFreq = -2,
+            killDelay = 120, targetFps = 60, cpuThrottle = 1,
             brightnessCap = 200, animOff = true, gpsPolicy = 1, netPolicy = 0, btPolicy = 1,
             batterySaver = true
         )
 
         val BUILTIN_ULTRA = Template(
             -1, "极限模式",
-            maxBg = 1, killDelay = 30, targetFps = 30, cpuFreq = -2,
+            killDelay = 30, targetFps = 30, cpuThrottle = 2,
             brightnessCap = 80, animOff = true, gpsPolicy = 0, netPolicy = 0, btPolicy = 0,
             batterySaver = true
         )
@@ -59,10 +57,9 @@ data class Template(
             return Template(
                 id = o.optInt("id", 0),
                 name = o.optString("name", "模板"),
-                maxBg = o.optInt("max_bg", -1),
                 killDelay = o.optInt("kill_delay", -1),
                 targetFps = o.optInt("target_fps", -1),
-                cpuFreq = o.optInt("cpu_freq", -1),
+                cpuThrottle = o.optInt("cpu_throttle", 0),
                 brightnessCap = o.optInt("brightness_cap", -1),
                 animOff = o.optInt("anim_off", 0) == 1,
                 gpsPolicy = o.optInt("gps_policy", 2),

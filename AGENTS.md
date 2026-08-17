@@ -27,93 +27,86 @@ LSPosed 系统框架电源管理模块（仅作用于 `system_server` 与系统�
 | AGP | 8.7.3 |
 | Kotlin | 2.0.21（含 compose 插件同版本） |
 | compileSdk / targetSdk / minSdk | 35 / 34 / 26 |
-| UI | Jetpack Compose + Material 3，完全默认原生主题（跟随系统深浅色，无自定义颜色/样式），纯中文 |
-| 存储 | JSON 字符串存 SharedPreferences（键 `config`），system_server 经 `XSharedPreferences` 读取；状态/日志经文件互通 |
+| UI | Jetpack Compose + Material 3，完全默认原生主题（`darkColorScheme`/`lightColorScheme` 跟随系统深浅色，无自定义颜色/样式），纯中文 |
+| 存储 | JSON 字符串存 SharedPreferences（键 `config`）；配置/日志经 ContentProvider 互通 |
 | Xposed API | `de.robv.android.xposed:api:82`（compileOnly） |
 | CI 运行 JDK | temurin 17 |
 
-## 架构
+## 重要：配置互通重构已落地（未提交，待 CI 验证）
 
-### 两层裁决链（优先级从高到低）
-1. 单独应用设置规则（`AppRule`：前台/后台启用 + 后台杀死时间，覆盖名单与模板）。
-2. 应用名单（单一名单 + 黑/白名单模式切换）+ 全局激活模板。
+已 staged 删除整个 hook/执行器/Root 层；模块入口与 UI 已全部适配新架构，工作区理论上可编译（本地不构建，编译验证依赖 CI）。重构方向：以 ContentProvider 配置通道 + AppLog 统一日志取代旧的文件/XSharedPreferences 互通，精简 Hook 面（system_server 侧暂不注册 Hook）。
 
-### 应用名单（设置页单一名单 + 模式切换）
-- 黑名单模式：名单内应用按模板受限，其余不受影响。
-- 白名单模式：名单内应用豁免，其余应用一律按模板受限（运行时由 system_server 枚举已装应用补全网络限制）。
-- 名单字段：`list_mode`（0 黑名单 / 1 白名单）+ `list`（单一名单）。测试阶段不考虑旧版兼容，不做旧字段迁移。
+### 已删除的旧类（staged，勿再引用）
+- `core/`：ApiExecutor、CircuitBreaker、ConfigProvider、EmergencyGuard、HardwareProbe、ModuleFiles、ModuleScheduler、RootChecker、RootExecutor、ScopeGuard、StatusReporter、StrategyExecutor
+- `data/CpuUtil.kt`、`util/LogUtil.kt`、全部 `hook/*`（AnimationHook、BackgroundKillHook、BrightnessHook、CurrentApp、FpsHook、GpsHook、ShutdownHook）
 
-### 单独应用设置（AppRule，优先级最高）
-- 字段：`enabled_fg` / `enabled_bg`（前台/后台启用）+ `kill_delay`（后台杀死时间，-1 跟随模板）。
-- 存储：`rules` Map（键=包名，值=AppRule）。裁决时 `isManaged(pkg, fg)` 优先查规则，其次名单；`killDelayFor(pkg, tpl)` 优先规则值。
+### 新架构现状（已落盘的新文件）
+- `core/Const.kt`：包名、`content://com.power.manager/config` 与 `/log` 两个 URI。
+- `core/SysContext.kt`：任意进程经 `ActivityThread.getSystemContext` 取 Context/ContentResolver（缓存）。
+- `core/ConfigChannel.kt`：system_server 等进程经 ContentProvider query 读配置，3s TTL 缓存。
+- `core/AppLog.kt`：统一日志（logcat `PowerManager` + `XposedBridge.log` + 经 ContentProvider insert 推送到 App 落盘）。
+- `ui/AppConfigProvider.kt`：ContentProvider——`query /config` 返回配置 JSON，`insert /log` 接收各进程日志行。
+- `ui/AppLogStore.kt`：App 侧统一日志落盘（各进程经 /log insert 推送，单线程顺序写、2000 行截断）。
+- 数据模型已改：`AppConfig` 删 `listMode`/`appList`（规则不存在即默认受管）；`Template` 删 `maxBg`/`cpuFreq`，新增 `cpuThrottle`（0/1/2 档）。
+
+### 重构落地情况（2026-08-17 代码完成，待 CI 验证）
+- 新增 `ui/AppLogStore.kt`：App 侧统一日志落盘（单线程顺序写、2000 行截断、`read()`/`logFile()` 供日志页）。
+- `AndroidManifest.xml` 已注册 `<provider android:name=".ui.AppConfigProvider" authorities="com.power.manager" exported="true">`。
+- `PowerManagerModule.kt` 精简为作用域白名单 + system_server 注入日志（`AppLog`），不再注册任何 Hook。
+- `ui/AppStore.kt` 删除 Root/chmod/CPU/名单旧逻辑；`copyOf` 只深拷贝 templates/rules；applyTemplate 仅写配置激活模板。
+- `ui/screens/`：SettingsScreen 删除名单模式与「清除异常关机回退」（机制已删）；HomeScreen 删除 Root 横幅与硬件能力卡片，summary 改 cpuThrottle；EditScreen 按新 Template 签名（命名参数）+ cpuThrottle 三档；LogScreen 改读 AppLogStore。
+- `MainActivity` 删除 `ensureShared`（chmod 方案废弃）；`AppRoot` 删除授权后 `HardwareProbe.scan`（能力扫描机制废弃）。
+- `AppConfigProvider.onCreate` 补 `AppStore.init`（provider 可能先于 Activity 启动）。
+
+## 架构（重构目标态）
+
+### 配置/日志互通（新核心）
+- 配置读取：system_server 与各进程经 `content://com.power.manager/config` 读模块 App 配置（`ConfigChannel` 带 3s TTL），取代旧 XSharedPreferences + chmod 方案。
+- 日志推送：各进程 `AppLog` 写 logcat + XposedBridge，并经 `content://com.power.manager/log` insert 推给 App 统一落盘；App 日志页可滚动查看与复制。
+
+### 数据模型
+- `AppConfig`：`templates`（Map<Int,Template>）+ `currentTemplateId`（默认 -3）+ `rules`（Map<包名, AppRule>）。
+  - `isManaged(pkg, fg)`：规则不存在 → 默认受管；存在 → 按 `enabledFg`/`enabledBg` 裁决。
+  - `killDelayFor(pkg, fallback)`：规则 `killDelay >= 0` 优先，否则回退全局模板。
+- `AppRule`（单独应用设置，优先级最高）：`enabledFg` / `enabledBg` / `killDelay`（-1 跟随模板）。
+- `Template`：`id`/`name`/`killDelay`/`targetFps`/`cpuThrottle`/`brightnessCap`/`animOff`/`gpsPolicy`/`netPolicy`/`btPolicy`/`batterySaver`。
+  - 内置只读预设（`id < 0`）：-3 正常（全放行）、-2 省电（killDelay=120/fps=60/cpuThrottle=1/亮度200/无动画/GPS后台禁/后台禁网/省电模式开）、-1 极限（killDelay=30/fps=30/cpuThrottle=2/亮度80/无动画/GPS禁/后台禁网/关蓝牙/省电模式开）。用户模板 ID ≥ 0。
+  - `fromJson` 缺内置模板时自动补齐 -3/-2/-1。
+
+### 保护白名单（`core/Protection.kt`）
+`isProtected`：空包名、模块自身、硬豁免集（android、SystemUI、电话、输入法、settings、providers.settings、launcher、Google 搜索等）一律受保护。
 
 ### 首次使用授权（仅 App 端一次）
-- App 首次启动进入全屏「严重警告」覆盖层：声明本应用为测试软件，警告深度系统干预可能导致卡顿/异常/数据丢失甚至无法开机，后果自负。
-- 5 秒倒计时后「允许模块运行」按钮可用，点击即写入 `SharedPreferences`（键 `consent`）一次性持久确认，此后不再弹出，直接进入主界面。
-- 无任何文件信标/物理熔断；是否生效完全取决于用户在 LSPosed 管理器中对模块的启用状态，App 端不做二次闸门。
-
-### 双模执行器（StrategyExecutor）
-- 主管线：System API（system UID）。
-- 备分管线：su -c（300ms 超时 + 强制回收进程）。
-- 降级触发：SecurityException / IllegalStateException / RemoteException / 返回 false。
-- CPU 频率：无 API，强制走备分管线（Root Shell）；写入内核前强制 `CpuUtil.sanitize` 兜底审查，非法/低于 20% 安全线/超频一律恢复 max，杜绝危险频率导致 CPU 挂起。
-- 熔断（CircuitBreaker）：策略项连续 5 次 API 失败 → 标记「不稳定」，下次直走备分。
-- 日志分级：API 成功=DEBUG，API 失败转 Root=INFO，Root 失败=WARN。
-
-### 模板管理
-- 字段：name / max_bg / kill_delay / target_fps / cpu_freq / brightness_cap / anim_off / gps_policy / net_policy / bt_policy / battery_saver（-1 不限；battery_saver 启用模板时开启系统省电模式）。
-- 内置只读预设：-3 正常（全放行）、-2 省电、-1 极限（均 battery_saver=true）。用户模板 ID≥0 递增，复制/空白（=复制 -3）新建。
-- 编辑页快捷填充仅 setText 不自动保存；CPU 动态换算（小数≤1.0 × cpuinfo_max_freq，>1.0 视为 KHz，20% 安全阈值低于自动转 -1 + Toast，防超频钳制）。
-- CPU 双审查：切换模板时 `sanitizeAllCpu` 强制审查所有模板，-2 哨兵（小数倍率）自动解析为真实 KHz 写回，非法值修复为安全值；写入内核前（`RootExecutor.writeCpuMaxFreq`）再次兜底审查。
-- 硬件扫描与能力自动禁用：首次授权确认时 `HardwareProbe.scan` 扫描 CPU 基准（max 频率/核数）并逐项测试能力（CPU 调频/帧率锁/动画/蓝牙/网络/GPS），落盘 `files/caps.json`（666）；运行时各 Hook 与调度按能力自动跳过不支持项，UI 编辑页自动禁用并提示。
-- max_bg 强制：`BackgroundKillHook` 15s 周期枚举后台受限进程（按 importance 排序），超限清理最不重要者。
-- 配置共享读取：`MODE_PRIVATE` 落盘 600 权限 system_server 读不到，每次 `save` 必须 `commit()` 同步落盘后经 Root `chmod shared_prefs 777` + `config.xml 666`。
-- 生命周期：应用即刷策略（CPU 即时，其余 Hook 实时读缓存）；删除激活模板回 -3；设置页重置所有模板。
-- 异常关机自动回退 -3：Hook `PowerManagerService` shutdown 写优雅退出标记，缺失且激活非 -3 时回退。
-
-### Hook 拦截点（system_server 作用域）
-- 切后台杀进程（Hook `setResumedActivityUncheckLocked`，按模板 kill_delay，通话中豁免）。
-- 帧率锁（自定义输入，仅受限应用生效）。
-- 动画三档（animator/transition/window）全置 0。
-- 亮度钳制（0-255，仅受限应用）。
-- 蓝牙关闭/还原原状态。
-- 后台网络：单应用 UID 限制（API 失败即放弃，不降级，防误伤）。
-- GPS：按 gps_policy（0 禁/1 后台禁/2 放行），受限应用返回缓存坐标。
-- CPU 频率：强制走 Root，60s 定时重刷。
-
-### 作用域（assets/scopes.txt，4 行）
-```
-system
-android
-com.android.providers.settings
-com.android.phone
-```
-- LSPosed 识别 legacy 模块：`AndroidManifest.xml` 必须带 `xposedminversion` metadata（LSPosed 以它判定模块，`assets/xposed_init` 仅作入口）。当前清单含 `xposedmodule/xposeddescription/xposedminversion=82/xposedscope`（scope 用 legacy 命名，管理器按旧版规则展示）。
-
-### Root 检测（RootChecker）
-- 检测结果带 30s TTL 自动重查，不再首次结果永久缓存；`forceRefresh()` 供授权成功后立即刷新，避免「已授予 root 仍显示缺失」。
-- 注意：APatch/KernelSU 按应用白名单授权，system_server 进程内 `su` 可能被拒，状态如实反映该进程实际能力。
+- 未确认时全屏 `ConsentScreen`：声明为测试软件、警告深度系统干预可能导致卡顿/异常/数据丢失甚至无法开机，5 秒倒计时后「允许模块运行」可用。
+- 点击写 SharedPreferences `consent` 一次性持久确认，此后不再弹出（硬件能力扫描机制已随重构删除，不再落盘能力基准）。
+- 无文件信标/物理熔断；是否生效取决于 LSPosed 管理器中的启用状态，App 端不做二次闸门。
 
 ### UI（Compose + Material 3）
-- 完全默认原生 Material 3：`darkColorScheme()`/`lightColorScheme()` 跟随系统深浅色，无任何自定义颜色/样式；组件只用标准 M3（Card/AssistChip/AlertDialog/FilterChip/Switch），图标只用 material-icons-core（Home/Settings/Info/Delete/Edit/ArrowBack/Refresh）。注意 material3 1.3.0 无 Banner 组件，覆盖层用 Card+Text+Button 渲染。
-- 首次启动全屏「严重警告」覆盖层（`ConsentScreen`，5 秒倒计时后「允许模块运行」可用），确认后写 `consent` 标志永不再弹；确认同时后台 `HardwareProbe.scan` 落盘能力基准。
-- 首页不显示任何运行模式指示器；缺 Root 时显示 Root 缺失横幅提示；首页整体可滚动（Column + verticalScroll，模板列表不再独占内部滚动）。
-- 设置页：单一名单 + 黑/白名单模式切换（FilterChip）；「应用单独设置」按钮进入 AppRulesScreen 管理每应用 AppRule。
-- 性能：root 轮询（3s）全部在 `Dispatchers.IO` 执行，绝不占主线程；Toast 用 `LaunchedEffect` 一次性显示并置空；模板列表用 `remember(cfg)` 缓存。
-- 实时刷新：`AppStore.load()` 每次返回全新实例（弃用对象缓存），写操作一律「`copyOf` 深拷贝 → 改副本 → `save` → 整体替换 state」，杜绝就地改状态对象导致 Compose 不重组。
+- 完全默认原生 Material 3，无任何自定义颜色/样式；组件用标准 M3（Card/AssistChip/AlertDialog/FilterChip/Switch/ChoiceChip），图标只用 material-icons-core。
+- 三 Tab：首页（模板列表+应用/新建/编辑/删除）、设置（应用单独设置入口+重置模板+查看日志）、日志。
+- 性能约定：日志轮询（3s）在 `Dispatchers.IO`；Toast 用 `LaunchedEffect` 一次性显示并置空；模板列表用 `remember(cfg)` 缓存。
+- 实时刷新：`AppStore.load()` 每次返回全新实例；写操作一律「`copyOf` 深拷贝 → 改副本 → `save` → 整体替换 state」，杜绝就地改状态导致 Compose 不重组。
 
-### 保护白名单（杀后台永不触碰，核心系统）
-system_server、launcher、SystemUI、电话、输入法。另有硬豁免：电话、输入法、系统 UI。
+### Hook 拦截点（system_server 作用域，重构前设计）
+- 切后台杀进程（Hook `setResumedActivityUncheckLocked`，按模板 kill_delay，通话中豁免）。
+- 帧率锁、动画三档全置 0、亮度钳制（仅受限应用）。
+- 蓝牙关闭/还原、后台网络单应用 UID 限制（API 失败即放弃不降级，防误伤）、GPS 按策略返回缓存坐标。
+- CPU 频率：强制走 Root 写 `scaling_max_freq`，60s 定时重刷；写入内核前兜底 sanitize 防危险频率导致 CPU 挂起。
+
+### 作用域与模块识别
+- `assets/scopes.txt` 4 行：system / android / com.android.providers.settings / com.android.phone。
+- `AndroidManifest.xml` 必须带 `xposedminversion=82` metadata（LSPosed 以它判定 legacy 模块，`assets/xposed_init` 仅作入口）；当前清单含 `xposedmodule/xposeddescription/xposedminversion/xposedscope`（scope=android;com.android.providers.settings;com.android.phone）。
+- 模块实际仅对 `android`（system_server）注册 Hook，其余作用域仅为兼容保留。
 
 ## 构建工作流
 
-- 文件：`.github/workflows/build.yml`
-- 触发：push / workflow_dispatch
-- 产物：`app/build/outputs/apk/debug/app-debug.apk`，artifact 命名 `power_manager_v{version}.apk`（版本号由 `:app:printVersionName` 任务输出）。versionName 格式 `1.0.0build{YYMMDDHHMM}`，构件号在 workflow 中由 `date +%y%m%d%H%M` 生成一次并 `-PbuildNumber=` 传给 Gradle（避免两次调用跨分钟不一致）
-- 工作流全程仅 debug（assembleDebug + 上传 APK），**无任何发行版/Release 相关步骤**
-- 依赖仓库：Xposed api 走 `https://api.xposed.info/`（jcenter 已死）
-- `gradle.properties`：启用 `org.gradle.caching`，**禁用 `configuration-cache`**（与 AGP 8.7.3 冲突）
-- 构建状态：2026-08-16 修复后 CI 全绿（8 步全通过，约 1m30s）；2026-08-17 综合修复后 CI 全绿；2026-08-17 原生化重构后 CI 全绿（修复 material3 1.3.0 无 Banner，改 Card 渲染）；2026-08-17 熔断移除后 CI 全绿；2026-08-17 名单/规则重构 + 省电模板后 CI 全绿（修复 setPowerSaveMode 隐藏 API 改反射）
+- 文件：`.github/workflows/build.yml`；触发：push main/master / workflow_dispatch。
+- 流程：JDK 17（temurin）→ `android-actions/setup-android`（SDK 缓存）→ sdkmanager 装 platform 35 + build-tools 34.0.0 → `gradle/actions/setup-gradle`（依赖+build 缓存）→ 生成构件号 → `assembleDebug` → `printVersionName` 取版本号 → 上传 APK。
+- 版本号：`1.0.0build{YYMMDDHHMM}`（如 1.0.0build2608170442），构件号由 workflow 用 `date +%y%m%d%H%M` 生成一次并经 `-PbuildNumber=` 传入（避免两次调用跨分钟不一致）；无属性时本地默认取当前时间。
+- 工作流全程仅 debug（assembleDebug + 上传 APK），无任何发行版/Release 步骤。
+- 依赖仓库：Xposed api 走 `https://api.xposed.info/`（jcenter 已死）。
+- `gradle.properties`：启用 `org.gradle.caching` 与 `org.gradle.parallel`；**勿启用 `configuration-cache`**（与 AGP 8.7.3 冲突）。
+- 构建状态：历史记录 CI 全绿；重构代码已落地未提交，待 push 后 CI 验证。
 
 ## 决策日志
 
@@ -121,19 +114,17 @@ system_server、launcher、SystemUI、电话、输入法。另有硬豁免：电
 |---|---|
 | 2026-08-16 | 双模执行器（API 主 / Root 备）；仅 LSPosed；仅 CI 构建；public 仓库；assembleDebug |
 | 2026-08-16 | Compose M3 固定深色纯中文；minSdk 26；无 emoji |
-| 2026-08-16 | 后台网络=单应用 UID 限制；CPU=还原+60s 定时重刷；熔断时 CPU 强制恢复 |
-| 2026-08-16 | 模式指示器=ContentProvider 实时读；模板存储=JSON+SharedPreferences |
-| 2026-08-16 | 应用显示名 Power Manager；README 对齐 assembleDebug |
+| 2026-08-16 | 后台网络=单应用 UID 限制；CPU=还原+60s 定时重刷 |
+| 2026-08-16 | 模板存储=JSON+SharedPreferences；应用显示名 Power Manager；README 对齐 assembleDebug |
 | 2026-08-16 | 作用域白名单防护（仅注入 android/系统设置/电话，实际仅 system_server 注册 Hook） |
-| 2026-08-16 | api:82 仅暴露 XposedBridge.hookAllMethods，统一用 XposedBridge；XSharedPreferences 存模板 |
-| 2026-08-16 | NetworkPolicyManager 不在公开 SDK，后台网络改纯反射 |
+| 2026-08-16 | api:82 仅暴露 XposedBridge.hookAllMethods，统一用 XposedBridge |
 | 2026-08-16 | 日志走内部文件 + logcat PowerManager + XposedBridge；App 日志页可复制 |
 | 2026-08-16 | 工作流纯 debug 无发行版；版本号经 printVersionName 任务读取 |
-| 2026-08-17 | CPU 双审查：切换模板全量审查并自动将 -2 哨兵解析为真实 KHz；写入内核前兜底 sanitize，防 CPU 挂起 |
-| 2026-08-17 | 配置共享读取：save 后 commit+su chmod shared_prefs 777/config.xml 666，供 system_server 读取 |
-| 2026-08-17 | 授权时硬件扫描（CPU 基准）+ 能力测试落盘 caps.json，运行时自动禁用不支持项；实现 maxBg 强制；熔断全局标志覆盖全部 Hook；authorized 状态同步 |
-| 2026-08-17 | 综合修复：manifest 补 xposedminversion=82 metadata（LSPosed 以此识别 legacy 模块，解决模块不在列表）；pmon 信标改 /sdcard/pmon（兼容 /pmon，解决 APatch 根目录只读写失败）；RootChecker 30s TTL+forceRefresh（解决授权后仍报 root 缺失）；AppStore 弃缓存改 copyOf 深拷贝触发重组（解决模板实时刷新）；UI 重设计标准 M3（图标 NavigationBar/TopAppBar/Card/AssistChip）；轮询移 IO + Toast 一次性 + items key（解决滚动卡顿） |
-| 2026-08-17 | 彻底原生化重构：熔断简化仅 /sdcard/pmon + /sdcard/pmoff 两个文件（删除 8 路径冗余与旧 /pmon 兼容）；删除运行模式指示器及 status.json/StatusProvider/ContentProvider 状态链（StatusReporter 仅保留 cpuFreqApplied/btDisabledByModule 供调度使用）；主题改系统默认 darkColorScheme/lightColorScheme 跟随深浅色、去全部自定义颜色；熔断时强制显示「允许模块运行」Banner，缺 Root 仅显示横幅提示 |
-| 2026-08-17 | 彻底移除熔断与授权：删除 PhysicalFuse.kt 及 pmon/pmoff 全部信标逻辑（模块注入/调度/5 个 Hook 不再做熔断检查）；AppStore 删除 authorize/revoke，新增 consent 持久标志；App 首次启动全屏「严重警告」覆盖层（ConsentScreen，声明为测试软件、警告危险性，5 秒倒计时后允许，仅一次）；HomeScreen 删除熔断横幅/授权弹窗，保留 Root 缺失横幅与硬件能力卡片；Settings 删除「停用模块（物理熔断）」入口 |
-| 2026-08-17 | 构件号自动生成：versionName 改 `1.0.0build{YYMMDDHHMM}`（如 1.0.0build2608170442），构件号由 workflow 用 `date +%y%m%d%H%M` 生成一次并经 `-PbuildNumber=` 传入（build.gradle.kts 支持属性覆盖，无属性时本地默认取当前时间） |
-| 2026-08-17 | 名单/规则重构：黑白名单合并为单一名单 + 黑/白名单模式切换（`list_mode`+`list`，测试阶段不考虑旧版兼容，无迁移）；新增 AppRule 单独应用设置（enabled_fg/enabled_bg/kill_delay，优先级最高，`isManaged`/`killDelayFor` 裁决）；设置页新增 AppRulesScreen；首页整体可滚动（Column+verticalScroll）；模板新增 battery_saver（启用时开启系统省电模式，ApiExecutor 反射 `setPowerSaveMode` + Root 写 low_power 双模）；白名单模式下 system_server 枚举已装应用补全网络限制 |
+| 2026-08-17 | CPU 双审查（切换模板全量审查、写入内核前兜底 sanitize）；配置共享读取（save 后 chmod）；硬件扫描能力自动禁用落盘 caps.json；maxBg 强制 |
+| 2026-08-17 | 综合修复：manifest 补 xposedminversion=82 metadata；pmon 信标改 /sdcard；RootChecker 30s TTL；AppStore 弃缓存改 copyOf 深拷贝；UI 重设计标准 M3；轮询移 IO |
+| 2026-08-17 | 彻底原生化重构（简化熔断信标、删状态指示器与状态链、系统默认 M3 主题） |
+| 2026-08-17 | 彻底移除熔断与授权（删 PhysicalFuse 信标逻辑），App 首次启动全屏「严重警告」ConsentScreen 一次确认 |
+| 2026-08-17 | 构件号自动生成：versionName `1.0.0build{YYMMDDHHMM}`，workflow 生成一次并经 `-PbuildNumber=` 传入 |
+| 2026-08-17 | 名单/规则重构：单一名单 + 黑/白名单模式切换；新增 AppRule 单独应用设置；模板新增 battery_saver（反射 setPowerSaveMode + Root 写 low_power 双模） |
+| 2026-08-17 | **配置互通原生化重构（未提交，中间态）**：删整个 hook/执行器/Root 层与 CpuUtil/LogUtil/全部 hook；新增 ContentProvider 配置/日志通道（AppConfigProvider + ConfigChannel 3s TTL + AppLog 统一日志 + SysContext 任意进程取 Context）；数据模型删名单改「规则缺省即受管」、Template 删 maxBg/cpuFreq 改 cpuThrottle 三档 |
+| 2026-08-17 | **配置互通重构落地（未提交，待 CI）**：新增 AppLogStore 统一落盘；manifest 注册 AppConfigProvider；模块入口精简为作用域白名单+日志；AppStore 删除 Root/chmod/CPU/名单旧逻辑；Settings/Home/Edit/Log 全 UI 适配新模型；删除名单模式、异常关机回退、硬件能力扫描与 Root 横幅 UI |

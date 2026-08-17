@@ -14,7 +14,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -37,32 +36,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import com.power.manager.core.HardwareCap
 import com.power.manager.data.AppConfig
 import com.power.manager.data.Template
 import com.power.manager.ui.AppStore
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.withContext
-import org.json.JSONObject
-import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(padding: PaddingValues, onEdit: (Template) -> Unit) {
     val context = LocalContext.current
     var cfg by remember { mutableStateOf(AppStore.load()) }
-    var rootAvailable by remember { mutableStateOf(AppStore.isRoot()) }
-    var capsInfo by remember { mutableStateOf(readCaps()) }
     var showNewDialog by remember { mutableStateOf(false) }
     var toast by remember { mutableStateOf<String?>(null) }
-
-    LaunchedEffect(Unit) {
-        while (true) {
-            rootAvailable = withContext(Dispatchers.IO) { AppStore.isRoot() }
-            delay(3000)
-        }
-    }
 
     LaunchedEffect(toast) {
         toast?.let {
@@ -83,14 +67,6 @@ fun HomeScreen(padding: PaddingValues, onEdit: (Template) -> Unit) {
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            if (!rootAvailable) {
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(16.dp)) {
-                        Text("未检测到 Root 权限，CPU 调频不可用，模块仍以系统 API 模式运行。", style = MaterialTheme.typography.bodyMedium)
-                    }
-                }
-            }
-            CapabilityCard(capsInfo)
             Text("模板列表", style = MaterialTheme.typography.titleMedium)
             val sorted = remember(cfg) { cfg.templates.values.sortedBy { it.id } }
             sorted.forEach { tpl ->
@@ -101,14 +77,14 @@ fun HomeScreen(padding: PaddingValues, onEdit: (Template) -> Unit) {
                         val next = AppStore.copyOf(cfg)
                         AppStore.applyTemplate(next, tpl)
                         cfg = next
-                        toast = "已应用模板：${tpl.name}"
+                        toast = "已应用模板：" + tpl.name
                     },
                     onEdit = { onEdit(tpl) },
                     onDelete = {
                         val next = AppStore.copyOf(cfg)
                         AppStore.deleteTemplate(next, tpl)
                         cfg = next
-                        toast = "已删除模板：${tpl.name}"
+                        toast = "已删除模板：" + tpl.name
                     }
                 )
             }
@@ -132,32 +108,6 @@ fun HomeScreen(padding: PaddingValues, onEdit: (Template) -> Unit) {
             },
             onDismiss = { showNewDialog = false }
         )
-    }
-}
-
-@Composable
-fun CapabilityCard(json: String?) {
-    if (json.isNullOrBlank()) return
-    val cap = try {
-        HardwareCap.fromJson(JSONObject(json))
-    } catch (e: Throwable) {
-        return
-    }
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("硬件能力（授权时扫描）", style = MaterialTheme.typography.titleSmall)
-            AssistChip(onClick = {}, label = { Text("CPU 调频：${if (cap.cpuFreqSupported) "支持" else "不支持"}") })
-            AssistChip(onClick = {}, label = { Text("帧率锁：${if (cap.fpsSupported) "支持" else "不支持"}") })
-            AssistChip(onClick = {}, label = { Text("动画：${if (cap.animSupported) "支持" else "不支持"}") })
-            AssistChip(onClick = {}, label = { Text("蓝牙：${if (cap.bluetoothSupported) "支持" else "不支持"}") })
-            AssistChip(onClick = {}, label = { Text("网络限制：${if (cap.networkSupported) "支持" else "不支持"}") })
-            AssistChip(onClick = {}, label = { Text("GPS：${if (cap.gpsSupported) "支持" else "不支持"}") })
-            Text(
-                "基准：CPU 上限 ${cap.cpuMaxFreqKHz / 1000}MHz · ${cap.cpuCoreCount} 核",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.outline
-            )
-        }
     }
 }
 
@@ -234,12 +184,12 @@ fun NewTemplateDialog(
                 sources.forEach { s ->
                     OutlinedButton(
                         onClick = {
-                            val finalName = if (name.isBlank()) "${s.name}-副本" else name.trim()
+                            val finalName = if (name.isBlank()) s.name + "-副本" else name.trim()
                             onPick(s, finalName)
                         },
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text("复制：${s.name}")
+                        Text("复制：" + s.name)
                     }
                 }
             }
@@ -251,11 +201,10 @@ fun NewTemplateDialog(
 
 fun templateSummary(tpl: Template): String {
     val parts = mutableListOf<String>()
-    if (tpl.maxBg >= 0) parts.add("后台进程≤${tpl.maxBg}")
-    if (tpl.killDelay >= 0) parts.add(if (tpl.killDelay == 0) "切后台即杀" else "${tpl.killDelay}秒后清理")
-    if (tpl.targetFps > 0) parts.add("帧率${tpl.targetFps}Hz")
-    if (tpl.cpuFreq != -1) parts.add("CPU限制")
-    if (tpl.brightnessCap in 1..255) parts.add("亮度≤${tpl.brightnessCap}")
+    if (tpl.killDelay >= 0) parts.add(if (tpl.killDelay == 0) "切后台即杀" else tpl.killDelay.toString() + "秒后清理")
+    if (tpl.targetFps > 0) parts.add("帧率" + tpl.targetFps + "Hz")
+    if (tpl.cpuThrottle > 0) parts.add("CPU节流" + tpl.cpuThrottle + "档")
+    if (tpl.brightnessCap in 1..255) parts.add("亮度≤" + tpl.brightnessCap)
     if (tpl.animOff) parts.add("无动画")
     parts.add(when (tpl.gpsPolicy) {
         0 -> "GPS禁用"
@@ -265,13 +214,4 @@ fun templateSummary(tpl: Template): String {
     parts.add(if (tpl.netPolicy == 0) "后台禁网" else "网络放行")
     parts.add(if (tpl.btPolicy == 0) "蓝牙关闭" else "蓝牙保持")
     return parts.joinToString(" · ")
-}
-
-fun readCaps(): String? {
-    return try {
-        val f = File(HardwareCap.capFile())
-        if (f.exists()) f.readText() else null
-    } catch (e: Throwable) {
-        null
-    }
 }
