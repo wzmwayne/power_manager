@@ -40,6 +40,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.power.manager.core.HardwareCap
 import com.power.manager.core.HardwareProbe
+import com.power.manager.core.PhysicalFuse
 import com.power.manager.data.AppConfig
 import com.power.manager.data.Template
 import com.power.manager.ui.AppStore
@@ -54,6 +55,7 @@ fun HomeScreen(padding: PaddingValues, onEdit: (Template) -> Unit) {
     var rootAvailable by remember { mutableStateOf(AppStore.isRoot()) }
     var statusJson by remember { mutableStateOf(readStatus(context)) }
     var capsInfo by remember { mutableStateOf(readCaps()) }
+    var fuseTripped by remember { mutableStateOf(PhysicalFuse.isTripped()) }
     var showAuthDialog by remember { mutableStateOf(false) }
     var showNewDialog by remember { mutableStateOf(false) }
     var toast by remember { mutableStateOf<String?>(null) }
@@ -61,6 +63,7 @@ fun HomeScreen(padding: PaddingValues, onEdit: (Template) -> Unit) {
     LaunchedEffect(Unit) {
         while (true) {
             statusJson = readStatus(context)
+            fuseTripped = PhysicalFuse.isTripped()
             delay(3000)
         }
     }
@@ -101,7 +104,7 @@ fun HomeScreen(padding: PaddingValues, onEdit: (Template) -> Unit) {
             }
         }
         StatusIndicator(statusJson)
-        CapabilityCard(capsInfo)
+        if (!fuseTripped) CapabilityCard(capsInfo)
         Text("模板列表", style = MaterialTheme.typography.titleMedium)
         LazyColumn(
             verticalArrangement = Arrangement.spacedBy(8.dp),
