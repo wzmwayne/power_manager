@@ -59,7 +59,7 @@
 - `MainActivity` 删除 `ensureShared`（chmod 方案废弃）；`AppRoot` 删除授权后 `HardwareProbe.scan`（能力扫描机制废弃）。
 - `AppConfigProvider.onCreate` 补 `AppStore.init`（provider 可能先于 Activity 启动）。
 
-### 应用进程策略执行器（2026-08-17 新方向，目标 LSPosed 框架，未提交）
+### 应用进程策略执行器（2026-08-17 新方向，目标 LSPosed 框架，CI 验证通过）
 - `hook/AppPolicyHook.kt`：注入每个用户应用进程，应用内策略：
   - 后台跟踪：hook `Activity.onResume/onPause` 维护前台计数，确认整应用后台（500ms 延迟判定，防 A->B 切换误判）。
   - 后台自杀：killDelay 到点后应用自杀（`Process.killProcess` 自身），下次启动为系统冷启动，效果等同删除后台；0 立即杀，<0 不杀；回前台取消。
@@ -122,7 +122,7 @@
 - 工作流全程仅 debug（assembleDebug + 上传 APK），无任何发行版/Release 步骤。
 - 依赖仓库：Xposed api 走 `https://api.xposed.info/`（jcenter 已死）。
 - `gradle.properties`：启用 `org.gradle.caching` 与 `org.gradle.parallel`；**勿启用 `configuration-cache`**（与 AGP 8.7.3 冲突）。
-- 构建状态：历史记录 CI 全绿；配置互通重构落地提交（dd31ea8 + 0105756 修复）后 CI 验证通过（run 32035384091 success，14 步全绿，含 assembleDebug 与 APK 上传）。
+- 构建状态：历史记录 CI 全绿；配置互通重构落地（dd31ea8 + 0105756）CI 通过（run 32035384091）；应用进程策略方向（51e696b + b994c58 修复 import）CI 通过（run 32039579402），含 assembleDebug 与 APK 上传。
 
 ## 决策日志
 
@@ -144,4 +144,4 @@
 | 2026-08-17 | 名单/规则重构：单一名单 + 黑/白名单模式切换；新增 AppRule 单独应用设置；模板新增 battery_saver（反射 setPowerSaveMode + Root 写 low_power 双模） |
 | 2026-08-17 | **配置互通原生化重构（未提交，中间态）**：删整个 hook/执行器/Root 层与 CpuUtil/LogUtil/全部 hook；新增 ContentProvider 配置/日志通道（AppConfigProvider + ConfigChannel 3s TTL + AppLog 统一日志 + SysContext 任意进程取 Context）；数据模型删名单改「规则缺省即受管」、Template 删 maxBg/cpuFreq 改 cpuThrottle 三档 |
 | 2026-08-17 | **配置互通重构落地（CI 验证通过）**：新增 AppLogStore 统一落盘；manifest 注册 AppConfigProvider；模块入口精简为作用域白名单+日志；AppStore 删除 Root/chmod/CPU/名单旧逻辑；Settings/Home/Edit/Log 全 UI 适配新模型；删除名单模式、异常关机回退、硬件能力扫描与 Root 横幅 UI；提交后 CI 全绿 |
-| 2026-08-17 | **目标是 LSPosed 框架（应用进程策略执行方向，未提交）**：不依赖 root、少依赖系统层；策略下沉到每个用户应用进程（AppPolicyHook：后台跟踪/自杀/冻结/WakeLock 拒绝/亮度钳制/帧率锁/禁动画/GPS 限制/蓝牙开启拦截）；后台清理改为应用进程自杀（killDelay 到点自杀，切回冷启动，等同删后台），废弃系统层 force-stop；system_server 仅保留蓝牙最小系统层能力 |
+| 2026-08-17 | **目标是 LSPosed 框架（应用进程策略执行方向，CI 验证通过）**：不依赖 root、少依赖系统层；策略下沉到每个用户应用进程（AppPolicyHook：后台跟踪/自杀/冻结/WakeLock 拒绝/亮度钳制/帧率锁/禁动画/GPS 限制/蓝牙开启拦截）；后台清理改为应用进程自杀（killDelay 到点自杀，切回冷启动，等同删后台），废弃系统层 force-stop；system_server 仅保留蓝牙最小系统层能力；推荐作用域改为全部应用；CI 全绿（run 32039579402） |
