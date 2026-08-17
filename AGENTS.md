@@ -32,9 +32,9 @@ LSPosed 系统框架电源管理模块（仅作用于 `system_server` 与系统�
 | Xposed API | `de.robv.android.xposed:api:82`（compileOnly） |
 | CI 运行 JDK | temurin 17 |
 
-## 重要：配置互通重构已落地（未提交，待 CI 验证）
+## 重要：配置互通重构已落地（CI 验证通过）
 
-已 staged 删除整个 hook/执行器/Root 层；模块入口与 UI 已全部适配新架构，工作区理论上可编译（本地不构建，编译验证依赖 CI）。重构方向：以 ContentProvider 配置通道 + AppLog 统一日志取代旧的文件/XSharedPreferences 互通，精简 Hook 面（system_server 侧暂不注册 Hook）。
+已删除整个 hook/执行器/Root 层；模块入口与 UI 已全部适配新架构，提交后 CI 验证通过（run 32035384091 success）。重构方向：以 ContentProvider 配置通道 + AppLog 统一日志取代旧的文件/XSharedPreferences 互通，精简 Hook 面（system_server 侧暂不注册 Hook）。
 
 ### 已删除的旧类（staged，勿再引用）
 - `core/`：ApiExecutor、CircuitBreaker、ConfigProvider、EmergencyGuard、HardwareProbe、ModuleFiles、ModuleScheduler、RootChecker、RootExecutor、ScopeGuard、StatusReporter、StrategyExecutor
@@ -49,7 +49,7 @@ LSPosed 系统框架电源管理模块（仅作用于 `system_server` 与系统�
 - `ui/AppLogStore.kt`：App 侧统一日志落盘（各进程经 /log insert 推送，单线程顺序写、2000 行截断）。
 - 数据模型已改：`AppConfig` 删 `listMode`/`appList`（规则不存在即默认受管）；`Template` 删 `maxBg`/`cpuFreq`，新增 `cpuThrottle`（0/1/2 档）。
 
-### 重构落地情况（2026-08-17 代码完成，待 CI 验证）
+### 重构落地情况（2026-08-17 已完成，CI 验证通过）
 - 新增 `ui/AppLogStore.kt`：App 侧统一日志落盘（单线程顺序写、2000 行截断、`read()`/`logFile()` 供日志页）。
 - `AndroidManifest.xml` 已注册 `<provider android:name=".ui.AppConfigProvider" authorities="com.power.manager" exported="true">`。
 - `PowerManagerModule.kt` 精简为作用域白名单 + system_server 注入日志（`AppLog`），不再注册任何 Hook。
@@ -106,7 +106,7 @@ LSPosed 系统框架电源管理模块（仅作用于 `system_server` 与系统�
 - 工作流全程仅 debug（assembleDebug + 上传 APK），无任何发行版/Release 步骤。
 - 依赖仓库：Xposed api 走 `https://api.xposed.info/`（jcenter 已死）。
 - `gradle.properties`：启用 `org.gradle.caching` 与 `org.gradle.parallel`；**勿启用 `configuration-cache`**（与 AGP 8.7.3 冲突）。
-- 构建状态：历史记录 CI 全绿；重构代码已落地未提交，待 push 后 CI 验证。
+- 构建状态：历史记录 CI 全绿；配置互通重构落地提交（dd31ea8 + 0105756 修复）后 CI 验证通过（run 32035384091 success，14 步全绿，含 assembleDebug 与 APK 上传）。
 
 ## 决策日志
 
@@ -127,4 +127,4 @@ LSPosed 系统框架电源管理模块（仅作用于 `system_server` 与系统�
 | 2026-08-17 | 构件号自动生成：versionName `1.0.0build{YYMMDDHHMM}`，workflow 生成一次并经 `-PbuildNumber=` 传入 |
 | 2026-08-17 | 名单/规则重构：单一名单 + 黑/白名单模式切换；新增 AppRule 单独应用设置；模板新增 battery_saver（反射 setPowerSaveMode + Root 写 low_power 双模） |
 | 2026-08-17 | **配置互通原生化重构（未提交，中间态）**：删整个 hook/执行器/Root 层与 CpuUtil/LogUtil/全部 hook；新增 ContentProvider 配置/日志通道（AppConfigProvider + ConfigChannel 3s TTL + AppLog 统一日志 + SysContext 任意进程取 Context）；数据模型删名单改「规则缺省即受管」、Template 删 maxBg/cpuFreq 改 cpuThrottle 三档 |
-| 2026-08-17 | **配置互通重构落地（未提交，待 CI）**：新增 AppLogStore 统一落盘；manifest 注册 AppConfigProvider；模块入口精简为作用域白名单+日志；AppStore 删除 Root/chmod/CPU/名单旧逻辑；Settings/Home/Edit/Log 全 UI 适配新模型；删除名单模式、异常关机回退、硬件能力扫描与 Root 横幅 UI |
+| 2026-08-17 | **配置互通重构落地（CI 验证通过）**：新增 AppLogStore 统一落盘；manifest 注册 AppConfigProvider；模块入口精简为作用域白名单+日志；AppStore 删除 Root/chmod/CPU/名单旧逻辑；Settings/Home/Edit/Log 全 UI 适配新模型；删除名单模式、异常关机回退、硬件能力扫描与 Root 横幅 UI；提交后 CI 全绿 |
