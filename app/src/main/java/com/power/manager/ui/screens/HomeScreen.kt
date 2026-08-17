@@ -15,7 +15,6 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
-import androidx.compose.material3.Banner
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -89,23 +88,20 @@ fun HomeScreen(padding: PaddingValues, onEdit: (Template) -> Unit) {
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             if (fuseTripped) {
-                Banner(
-                    modifier = Modifier.fillMaxWidth(),
-                    action = {
-                        TextButton(onClick = { showAuthDialog = true }) { Text("允许模块运行") }
-                    },
-                    text = {
-                        Text("模块尚未授权或已被停用，需完成授权（需 Root）后重启生效。")
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("模块尚未授权或已被停用，需完成授权（需 Root）后重启生效。", style = MaterialTheme.typography.bodyMedium)
+                        TextButton(onClick = { showAuthDialog = true }, modifier = Modifier.align(Alignment.End)) {
+                            Text("允许模块运行")
+                        }
                     }
-                )
+                }
             } else if (!rootAvailable) {
-                Banner(
-                    modifier = Modifier.fillMaxWidth(),
-                    action = {},
-                    text = {
-                        Text("未检测到 Root 权限，CPU 调频不可用，模块仍以系统 API 模式运行。")
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(16.dp)) {
+                        Text("未检测到 Root 权限，CPU 调频不可用，模块仍以系统 API 模式运行。", style = MaterialTheme.typography.bodyMedium)
                     }
-                )
+                }
             }
             if (!fuseTripped) CapabilityCard(capsInfo)
             Text("模板列表", style = MaterialTheme.typography.titleMedium)
