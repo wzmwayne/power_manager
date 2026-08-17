@@ -15,8 +15,6 @@ object ModuleFiles {
         return candidates.last()
     }
 
-    fun statusFile(): String = filesDir() + "/status.json"
-
     fun logFile(): String = filesDir() + "/power_manager.log"
 
     fun emergencyFile(): String = filesDir() + "/emergency"

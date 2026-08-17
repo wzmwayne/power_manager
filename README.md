@@ -12,7 +12,7 @@ LSPosed 系统框架电源管理模块，仅作用于 `system_server` 与系统�
 - 双模执行器（API 主 / Root 备）：
   - 主管线：利用 `system_server` 的 `system` UID 调用 Android 原生 API（杀进程、锁帧、禁网、亮度等）。
   - 备分管线：API 失败或 CPU 调频等无 API 场景，自动降级为 `su -c` Root Shell 保底执行。
-- 物理级熔断自救（多目录冗余）：支持 8 个目录的 `pmoff` 文件探测 + `/sdcard/pmon` 授权信标机制，无需卸载模块即可彻底断电。
+- 物理级熔断自救：仅探测 `/sdcard` 目录 2 个文件（`/sdcard/pmoff` 禁用文件 + `/sdcard/pmon` 授权信标），无需卸载模块即可彻底断电。
 - CPU 频率智能换算：支持直接输入 KHz 整数或小数（如 `0.6` 代表最高频的 60%），自动钳制上限，低于最高频 20% 自动转 `-1`（不限），防止死机。
 - 异常关机自动回退「正常模式(-3)」：Hook 关机流程写入优雅退出标记，缺失即回退并强制恢复 CPU。
 
@@ -20,7 +20,7 @@ LSPosed 系统框架电源管理模块，仅作用于 `system_server` 与系统�
 
 | 层级 | 职责 |
 | --- | --- |
-| UI 表现层（App） | 模板管理、黑白名单、激活引导与运行模式指示 |
+| UI 表现层（App） | 模板管理、黑白名单、授权/Root 状态横幅 |
 | 数据持久层 | JSON 字符串存 SharedPreferences（键 `config`） |
 | 策略引擎层 | 配置组装、CPU 标准化换算、Root 可用性预检 |
 | Hook 注入层（LSPosed） | 注入 `system_server`，执行裁决链与双模执行器 |
@@ -38,22 +38,14 @@ CPU 频率无 API 主管线，强制走备分管线，60 秒定时重刷，熔�
 
 ### 物理熔断
 
-模块启动（注入前）按下表顺序轮询，任一 `pmoff` 存在即静默退出；`/sdcard/pmon`（兼容旧 `/pmon`）不存在或不可读同样熔断（未授权）。
+模块启动（注入前）检查 `/sdcard` 目录 2 个文件，任一命中即静默退出：
 
 ```
-/data/local/tmp/pmoff
-/data/local/tmp/pmoff.txt
-/sdcard/pmoff
-/sdcard/pmoff.txt
-/storage/emulated/0/pmoff
-/cache/pmoff
-/system/pmoff
-/pmoff
-/sdcard/pmon  # 授权信标（主）
-/pmon        # 授权信标（兼容旧版）
+/sdcard/pmoff  # 禁用文件：存在 → 熔断（已停用）
+/sdcard/pmon   # 授权信标：不存在或不可读 → 熔断（未授权）
 ```
 
-首次授权：App 内点击「允许模块运行」→ 3 秒倒计时确认 → 创建 `/sdcard/pmon`（兼容旧 `/pmon`）+ 删除所有 `pmoff` → 重启生效。
+首次授权：App 内点击「允许模块运行」→ 3 秒倒计时确认 → 创建 `/sdcard/pmon` + 删除 `/sdcard/pmoff` → 重启生效。熔断时首页强制显示「允许模块运行」横幅。
 
 ## 使用
 

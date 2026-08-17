@@ -27,7 +27,7 @@ LSPosed 系统框架电源管理模块（仅作用于 `system_server` 与系统�
 | AGP | 8.7.3 |
 | Kotlin | 2.0.21（含 compose 插件同版本） |
 | compileSdk / targetSdk / minSdk | 35 / 34 / 26 |
-| UI | Jetpack Compose + Material 3，固定深色主题，纯中文 |
+| UI | Jetpack Compose + Material 3，完全默认原生主题（跟随系统深浅色，无自定义颜色/样式），纯中文 |
 | 存储 | JSON 字符串存 SharedPreferences（键 `config`），system_server 经 `XSharedPreferences` 读取；状态/日志经文件互通 |
 | Xposed API | `de.robv.android.xposed:api:82`（compileOnly） |
 | CI 运行 JDK | temurin 17 |
@@ -35,25 +35,18 @@ LSPosed 系统框架电源管理模块（仅作用于 `system_server` 与系统�
 ## 架构
 
 ### 三层裁决链（优先级从高到低）
-1. 物理熔断：轮询 8 个 `pmoff` 路径 + `/pmon` 授权信标（不存在即熔断）。
+1. 物理熔断：`/sdcard/pmon` 授权信标（不存在即熔断）+ `/sdcard/pmoff` 禁用文件。
 2. 单独应用覆盖规则。
 3. 黑白名单 + 全局激活模板。
 
-### 物理熔断（8 + 1 路径，注入前轮询，任一命中即 return）
+### 物理熔断（仅 sdcard 目录 2 文件，注入前轮询，任一命中即 return）
 ```
-/data/local/tmp/pmoff
-/data/local/tmp/pmoff.txt
-/sdcard/pmoff
-/sdcard/pmoff.txt
-/storage/emulated/0/pmoff
-/cache/pmoff
-/system/pmoff
-/pmoff
-/sdcard/pmon  # 授权信标（主）：不存在或不可读 → 熔断（未授权）
-/pmon        # 授权信标（兼容旧版，已授权用户不熔断）
+/sdcard/pmon   # 授权信标：不存在或不可读 → 熔断（未授权）
+/sdcard/pmoff  # 禁用文件：存在 → 熔断（已停用）
 ```
-- 首次授权：App 内「允许模块运行」→ 3 秒倒计时确认 → 创建 `/sdcard/pmon`（兼容旧 `/pmon`）+ 删除所有目录 `pmoff` → 重启生效。信标路径在 `/sdcard`（SAR/EROFS 设备根目录只读，APatch 报 "read-only"）。
+- 首次授权：App 内「允许模块运行」→ 3 秒倒计时确认 → 创建 `/sdcard/pmon` + 删除 `/sdcard/pmoff` → 重启生效。信标路径在 `/sdcard`（SAR/EROFS 设备根目录只读，APatch 报 "read-only"）。
 - **熔断触发时：立即 su 写回 `cpuinfo_max_freq` 强制恢复 CPU。**
+- **熔断时首页强制显示「允许模块运行」横幅（Banner + 按钮），不熔断但缺 Root 时显示 Root 缺失横幅提示。**
 
 ### 双模执行器（StrategyExecutor）
 - 主管线：System API（system UID）。
@@ -61,7 +54,6 @@ LSPosed 系统框架电源管理模块（仅作用于 `system_server` 与系统�
 - 降级触发：SecurityException / IllegalStateException / RemoteException / 返回 false。
 - CPU 频率：无 API，强制走备分管线（Root Shell）；写入内核前强制 `CpuUtil.sanitize` 兜底审查，非法/低于 20% 安全线/超频一律恢复 max，杜绝危险频率导致 CPU 挂起。
 - 熔断（CircuitBreaker）：策略项连续 5 次 API 失败 → 标记「不稳定」，下次直走备分。
-- 模式上报：system_server 写状态文件，App 经 ContentProvider 实时读取。
 - 日志分级：API 成功=DEBUG，API 失败转 Root=INFO，Root 失败=WARN。
 
 ### 模板管理
@@ -72,7 +64,7 @@ LSPosed 系统框架电源管理模块（仅作用于 `system_server` 与系统�
 - 硬件扫描与能力自动禁用：授权时 `HardwareProbe.scan` 扫描 CPU 基准（max 频率/核数）并逐项测试能力（CPU 调频/帧率锁/动画/蓝牙/网络/GPS），落盘 `files/caps.json`（666）；运行时各 Hook 与调度按能力自动跳过不支持项，UI 编辑页自动禁用并提示。
 - max_bg 强制：`BackgroundKillHook` 15s 周期枚举后台受限进程（按 importance 排序），超限清理最不重要者。
 - 熔断全局标志：`PhysicalFuse.tripped` 由轮询置位，全部 Hook 回调入口检查后跳过，熔断后模块整体停用而非仅停调度。
-- 授权状态：授权/停用成功后同步 `cfg.authorized`；首页硬件能力卡片的有无与熔断同一机制（App 端轮询 `PhysicalFuse.isTripped`，熔断/停用时隐藏）。
+- 首页横幅与硬件能力卡片的有无同熔断机制（App 端轮询 `PhysicalFuse.isTripped`，熔断/停用时显示授权横幅、隐藏能力卡片）。
 - 配置共享读取：`MODE_PRIVATE` 落盘 600 权限 system_server 读不到，每次 `save` 必须 `commit()` 同步落盘后经 Root `chmod shared_prefs 777` + `config.xml 666`。
 - 生命周期：应用即刷策略（CPU 即时，其余 Hook 实时读缓存）；删除激活模板回 -3；设置页重置所有模板。
 - 异常关机自动回退 -3：Hook `PowerManagerService` shutdown 写优雅退出标记，缺失且激活非 -3 时回退。
@@ -101,9 +93,9 @@ com.android.phone
 - 注意：APatch/KernelSU 按应用白名单授权，system_server 进程内 `su` 可能被拒，状态如实反映该进程实际能力。
 
 ### UI（Compose + Material 3）
-- 标准 M3 组件与图标（material-icons-core 内置 Home/Settings/Info/Delete/Edit/ArrowBack/Refresh），NavigationBar 用图标+标签，各页统一 TopAppBar。
-- 状态/能力/模板卡全部改用 Card/AssistChip/ListItem 标准组件；固定深色主题，`darkColorScheme` 提供完整 surfaceContainer 层级配色。
-- 性能：状态轮询（3s）全部在 `Dispatchers.IO` 执行，绝不占主线程；Toast 用 `LaunchedEffect` 一次性显示并置空；`LazyColumn` items 带 key 且列表用 `remember(cfg)` 缓存。
+- 完全默认原生 Material 3：`darkColorScheme()`/`lightColorScheme()` 跟随系统深浅色，无任何自定义颜色/样式；组件只用标准 M3（Card/Banner/AssistChip/AlertDialog/FilterChip/Switch），图标只用 material-icons-core（Home/Settings/Info/Delete/Edit/ArrowBack/Refresh）。
+- 首页不显示任何运行模式指示器；熔断时显示「允许模块运行」Banner，缺 Root 时显示 Root 缺失 Banner。
+- 性能：熔断/root 轮询（3s）全部在 `Dispatchers.IO` 执行，绝不占主线程；Toast 用 `LaunchedEffect` 一次性显示并置空；`LazyColumn` items 带 key 且列表用 `remember(cfg)` 缓存。
 - 实时刷新：`AppStore.load()` 每次返回全新实例（弃用对象缓存），写操作一律「`copyOf` 深拷贝 → 改副本 → `save` → 整体替换 state」，杜绝就地改状态对象导致 Compose 不重组。
 
 ### 保护白名单（杀后台永不触碰，核心系统）
@@ -137,3 +129,4 @@ system_server、launcher、SystemUI、电话、输入法。另有硬豁免：电
 | 2026-08-17 | 配置共享读取：save 后 commit+su chmod shared_prefs 777/config.xml 666，供 system_server 读取 |
 | 2026-08-17 | 授权时硬件扫描（CPU 基准）+ 能力测试落盘 caps.json，运行时自动禁用不支持项；实现 maxBg 强制；熔断全局标志覆盖全部 Hook；authorized 状态同步 |
 | 2026-08-17 | 综合修复：manifest 补 xposedminversion=82 metadata（LSPosed 以此识别 legacy 模块，解决模块不在列表）；pmon 信标改 /sdcard/pmon（兼容 /pmon，解决 APatch 根目录只读写失败）；RootChecker 30s TTL+forceRefresh（解决授权后仍报 root 缺失）；AppStore 弃缓存改 copyOf 深拷贝触发重组（解决模板实时刷新）；UI 重设计标准 M3（图标 NavigationBar/TopAppBar/Card/AssistChip）；轮询移 IO + Toast 一次性 + items key（解决滚动卡顿） |
+| 2026-08-17 | 彻底原生化重构：熔断简化仅 /sdcard/pmon + /sdcard/pmoff 两个文件（删除 8 路径冗余与旧 /pmon 兼容）；删除运行模式指示器及 status.json/StatusProvider/ContentProvider 状态链（StatusReporter 仅保留 cpuFreqApplied/btDisabledByModule 供调度使用）；主题改系统默认 darkColorScheme/lightColorScheme 跟随深浅色、去全部自定义颜色；熔断时强制显示「允许模块运行」Banner，缺 Root 仅显示横幅提示 |

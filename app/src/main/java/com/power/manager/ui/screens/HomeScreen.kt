@@ -1,32 +1,23 @@
 package com.power.manager.ui.screens
 
-import android.content.Context
-import android.net.Uri
 import android.widget.Toast
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.Banner
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -45,7 +36,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.power.manager.core.HardwareCap
@@ -66,7 +56,6 @@ fun HomeScreen(padding: PaddingValues, onEdit: (Template) -> Unit) {
     val context = LocalContext.current
     var cfg by remember { mutableStateOf(AppStore.load()) }
     var rootAvailable by remember { mutableStateOf(AppStore.isRoot()) }
-    var statusJson by remember { mutableStateOf("") }
     var capsInfo by remember { mutableStateOf(readCaps()) }
     var fuseTripped by remember { mutableStateOf(true) }
     var showAuthDialog by remember { mutableStateOf(false) }
@@ -75,7 +64,6 @@ fun HomeScreen(padding: PaddingValues, onEdit: (Template) -> Unit) {
 
     LaunchedEffect(Unit) {
         while (true) {
-            statusJson = withContext(Dispatchers.IO) { readStatus(context) }
             fuseTripped = withContext(Dispatchers.IO) { PhysicalFuse.isTripped() }
             rootAvailable = withContext(Dispatchers.IO) { AppStore.isRoot() }
             delay(3000)
@@ -100,49 +88,25 @@ fun HomeScreen(padding: PaddingValues, onEdit: (Template) -> Unit) {
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            if (!cfg.authorized) {
-                ElevatedCard(Modifier.fillMaxWidth()) {
-                    Column(
-                        Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                Icons.Filled.Info,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary
-                            )
-                            Text(
-                                "模块尚未授权",
-                                style = MaterialTheme.typography.titleMedium,
-                                modifier = Modifier.padding(start = 8.dp)
-                            )
-                        }
-                        Text(
-                            "点击「允许模块运行」完成首次授权。需要 Root 权限，将创建 /sdcard/pmon 授权信标并清除所有 pmoff 禁用文件，重启后生效。",
-                            style = MaterialTheme.typography.bodySmall
-                        )
-                        Button(onClick = { showAuthDialog = true }, modifier = Modifier.align(Alignment.End)) {
-                            Text("允许模块运行")
-                        }
-                    }
-                }
-            }
-            if (!rootAvailable) {
-                Card(
+            if (fuseTripped) {
+                Banner(
                     modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
-                ) {
-                    Column(Modifier.padding(16.dp)) {
-                        Text("未检测到 Root 权限", style = MaterialTheme.typography.titleMedium)
-                        Text(
-                            "CPU 调频与部分保底功能将不可用，模块仍可运行（API 模式）。应用模板时 CPU 限制项将被自动转为不限。",
-                            style = MaterialTheme.typography.bodySmall
-                        )
+                    action = {
+                        TextButton(onClick = { showAuthDialog = true }) { Text("允许模块运行") }
+                    },
+                    text = {
+                        Text("模块尚未授权或已被停用，需完成授权（需 Root）后重启生效。")
                     }
-                }
+                )
+            } else if (!rootAvailable) {
+                Banner(
+                    modifier = Modifier.fillMaxWidth(),
+                    action = {},
+                    text = {
+                        Text("未检测到 Root 权限，CPU 调频不可用，模块仍以系统 API 模式运行。")
+                    }
+                )
             }
-            StatusIndicator(statusJson)
             if (!fuseTripped) CapabilityCard(capsInfo)
             Text("模板列表", style = MaterialTheme.typography.titleMedium)
             val sorted = remember(cfg) { cfg.templates.values.sortedBy { it.id } }
@@ -183,9 +147,6 @@ fun HomeScreen(padding: PaddingValues, onEdit: (Template) -> Unit) {
                 capsInfo = readCaps()
                 val ok = AppStore.authorize()
                 rootAvailable = AppStore.isRoot()
-                val next = AppStore.copyOf(cfg)
-                next.authorized = ok || next.authorized
-                cfg = next
                 val unsupported = cap.unsupportedList()
                 toast = if (ok) {
                     val base = "授权成功，已保存硬件基准，重启后生效"
@@ -212,24 +173,6 @@ fun HomeScreen(padding: PaddingValues, onEdit: (Template) -> Unit) {
             },
             onDismiss = { showNewDialog = false }
         )
-    }
-}
-
-@Composable
-fun StatusIndicator(json: String) {
-    val info = parseStatus(json) ?: return
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
-        ) {
-            Box(
-                Modifier
-                    .size(10.dp)
-                    .background(info.color, CircleShape)
-            )
-            Text(info.text, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(start = 8.dp))
-        }
     }
 }
 
@@ -267,13 +210,7 @@ fun TemplateCard(
     onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = if (active) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
-        ),
-        border = if (active) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null
-    ) {
+    Card(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(tpl.name, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
@@ -332,7 +269,7 @@ fun AuthDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
                 if (count > 0)
                     "请阅读风险提示：本模块会强制限制系统资源，极端策略可能造成卡顿或异常。倒计时 $count 秒后可确认。"
                 else
-                    "即将创建 /sdcard/pmon 授权信标并清除所有 pmoff 禁用文件。确认后请重启手机，模块正式注入生效。"
+                    "即将创建 /sdcard/pmon 授权信标并清除 /sdcard/pmoff 禁用文件。确认后请重启手机，模块正式注入生效。"
             )
         },
         confirmButton = {
@@ -400,70 +337,10 @@ fun templateSummary(tpl: Template): String {
     return parts.joinToString(" · ")
 }
 
-fun readStatus(context: Context): String {
-    return try {
-        val uri = Uri.parse("content://com.power.manager.status/status")
-        val c = context.contentResolver.query(uri, null, null, null, null) ?: return ""
-        try {
-            if (c.moveToFirst()) {
-                val idx = c.getColumnIndex("json")
-                if (idx >= 0) c.getString(idx) else ""
-            } else {
-                ""
-            }
-        } finally {
-            c.close()
-        }
-    } catch (e: Throwable) {
-        ""
-    }
-}
-
 fun readCaps(): String? {
     return try {
         val f = File(HardwareCap.capFile())
         if (f.exists()) f.readText() else null
-    } catch (e: Throwable) {
-        null
-    }
-}
-
-data class StatusInfo(val text: String, val color: Color)
-
-fun parseStatus(json: String): StatusInfo? {
-    if (json.isBlank()) return null
-    return try {
-        val o = JSONObject(json)
-        val fuse = o.optBoolean("fuseTripped", false)
-        val root = o.optBoolean("rootAvailable", false)
-        val rootCount = o.optInt("rootCount", 0)
-        val emergency = o.optBoolean("emergencyFallback", false)
-        val bt = o.optBoolean("btDisabledByModule", false)
-        val cpu = o.optInt("cpuFreqApplied", -1)
-        val sb = StringBuilder()
-        val color: Color
-        when {
-            fuse -> {
-                color = Color(0xFFF44336)
-                sb.append("物理熔断：模块已停用")
-            }
-            !root -> {
-                color = Color(0xFFFF9800)
-                sb.append("警告：Root 缺失，CPU 限制已禁用")
-            }
-            rootCount > 0 -> {
-                color = Color(0xFFFFEB3B)
-                sb.append("运行模式：混合（部分功能使用 Root）")
-            }
-            else -> {
-                color = Color(0xFF4CAF50)
-                sb.append("运行模式：系统 API（流畅）")
-            }
-        }
-        if (emergency) sb.append(" / 异常关机回退中")
-        if (bt) sb.append(" / 蓝牙已由模块关闭")
-        if (cpu > 0) sb.append(" / CPU ${cpu / 1000}MHz")
-        StatusInfo(sb.toString(), color)
     } catch (e: Throwable) {
         null
     }

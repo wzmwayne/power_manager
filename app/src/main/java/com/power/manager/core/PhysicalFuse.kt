@@ -3,18 +3,8 @@ package com.power.manager.core
 import java.io.File
 
 object PhysicalFuse {
-    private val pmoffPaths = arrayOf(
-        "/data/local/tmp/pmoff",
-        "/data/local/tmp/pmoff.txt",
-        "/sdcard/pmoff",
-        "/sdcard/pmoff.txt",
-        "/storage/emulated/0/pmoff",
-        "/cache/pmoff",
-        "/system/pmoff",
-        "/pmoff"
-    )
     private const val PMON = "/sdcard/pmon"
-    private const val PMON_LEGACY = "/pmon"
+    private const val PMOFF = "/sdcard/pmoff"
 
     @Volatile
     var tripped: Boolean = false
@@ -22,10 +12,8 @@ object PhysicalFuse {
 
     fun isTripped(): Boolean {
         val r = try {
-            val pmonOk = File(PMON).exists() && File(PMON).canRead() ||
-                File(PMON_LEGACY).exists() && File(PMON_LEGACY).canRead()
-            if (!pmonOk) true
-            else pmoffPaths.any { File(it).exists() }
+            val pmonOk = File(PMON).exists() && File(PMON).canRead()
+            !pmonOk || File(PMOFF).exists()
         } catch (e: Throwable) {
             true
         }
@@ -39,17 +27,13 @@ object PhysicalFuse {
 
     fun authorize(): Boolean {
         val ok = RootExecutor.writeFile(PMON, "authorized-by-power-manager")
-        removePmoff()
+        if (ok) RootExecutor.removeFile(PMOFF)
         return ok
     }
 
-    fun revoke(): Boolean = RootExecutor.createFile(pmoffPaths[0])
+    fun revoke(): Boolean = RootExecutor.createFile(PMOFF)
 
-    private fun removePmoff() {
-        for (p in pmoffPaths) RootExecutor.removeFile(p)
-    }
-
-    fun pmoffPaths(): List<String> = pmoffPaths.toList()
+    fun pmoffPaths(): List<String> = listOf(PMOFF)
 
     fun pmonPath(): String = PMON
 }

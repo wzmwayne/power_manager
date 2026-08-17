@@ -6,7 +6,6 @@ import com.power.manager.core.ModuleScheduler
 import com.power.manager.core.PhysicalFuse
 import com.power.manager.core.RootExecutor
 import com.power.manager.core.ScopeGuard
-import com.power.manager.core.StatusReporter
 import com.power.manager.hook.AnimationHook
 import com.power.manager.hook.BackgroundKillHook
 import com.power.manager.hook.BrightnessHook
@@ -46,7 +45,6 @@ class PowerManagerModule : IXposedHookLoadPackage {
             ShutdownHook.hook(lpparam)
 
             ModuleScheduler.start()
-            StatusReporter.write()
         } catch (e: Throwable) {
             LogUtil.e(e, "handleLoadPackage 异常，已防止错误扩散")
         }

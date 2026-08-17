@@ -8,8 +8,7 @@ data class AppConfig(
     var currentTemplateId: Int = -3,
     val whitelist: MutableSet<String>,
     val blacklist: MutableSet<String>,
-    val overrides: MutableMap<String, Template>,
-    var authorized: Boolean = false
+    val overrides: MutableMap<String, Template>
 ) {
 
     fun isRestricted(pkg: String): Boolean {
@@ -33,7 +32,6 @@ data class AppConfig(
         val ov = JSONObject()
         for ((pkg, v) in overrides) ov.put(pkg, v.toJson())
         o.put("overrides", ov)
-        o.put("authorized", authorized)
         return o.toString()
     }
 
@@ -48,8 +46,7 @@ data class AppConfig(
                 currentTemplateId = -3,
                 whitelist = mutableSetOf(),
                 blacklist = mutableSetOf(),
-                overrides = mutableMapOf(),
-                authorized = false
+                overrides = mutableMapOf()
             )
         }
 
@@ -87,8 +84,7 @@ data class AppConfig(
                     currentTemplateId = o.optInt("current", -3),
                     whitelist = whitelist,
                     blacklist = blacklist,
-                    overrides = overrides,
-                    authorized = o.optBoolean("authorized", false)
+                    overrides = overrides
                 )
             } catch (e: Throwable) {
                 default()

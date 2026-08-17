@@ -43,7 +43,6 @@ object ModuleScheduler {
                     if (tpl != null) applyCpu(tpl)
                     lastCpuApply = now
                 }
-                StatusReporter.write()
             } catch (e: Throwable) {
                 LogUtil.e(e, "调度循环异常")
             }

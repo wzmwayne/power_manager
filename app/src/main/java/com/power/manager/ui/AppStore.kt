@@ -57,15 +57,12 @@ object AppStore {
         try {
             val files = ctx.filesDir
             files.mkdirs()
-            val st = File(files, "status.json")
-            if (!st.exists()) st.writeText("{}")
             val lg = File(files, "power_manager.log")
             if (!lg.exists()) lg.writeText("")
             val sp = File(ctx.applicationInfo.dataDir, "shared_prefs")
             RootExecutor.run(
                 "mkdir -p ${sp.absolutePath}; chmod 777 ${files.absolutePath}; " +
                     "chmod 777 ${sp.absolutePath}; " +
-                    "chmod 666 ${st.absolutePath}; " +
                     "chmod 666 ${lg.absolutePath}"
             )
         } catch (e: Throwable) {
@@ -128,21 +125,12 @@ object AppStore {
     fun authorize(): Boolean {
         val ok = PhysicalFuse.authorize()
         RootChecker.forceRefresh()
-        if (ok) {
-            val cfg = load()
-            cfg.authorized = true
-            save(cfg)
-        }
         return ok
     }
 
     fun revoke(): Boolean {
         val ok = PhysicalFuse.revoke()
-        if (ok) {
-            val cfg = load()
-            cfg.authorized = false
-            save(cfg)
-        }
+        RootChecker.forceRefresh()
         return ok
     }
 
