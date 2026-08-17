@@ -65,7 +65,7 @@ App 首次启动进入全屏「严重警告」覆盖层：本应用为测试软�
 | 后台网络 | 单应用 UID 限制 | 不降级（API 失败即放弃，防误伤） |
 | GPS 禁用 | 拦截定位请求，返回缓存坐标 | 无 |
 | CPU 频率 | 无 API | 写 `scaling_max_freq`（强制走 Root） |
-| 系统省电模式 | PowerManager.setPowerSaveMode | `settings put global low_power` |
+| 系统省电模式 | 反射 PowerManager.setPowerSaveMode | `settings put global low_power` |
 
 ## 构建
 

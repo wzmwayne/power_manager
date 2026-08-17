@@ -87,7 +87,9 @@ object ApiExecutor {
         return try {
             val ctx = systemContext() ?: return false
             val pm = ctx.getSystemService(Context.POWER_SERVICE) as? android.os.PowerManager ?: return false
-            pm.setPowerSaveMode(enabled)
+            val method = pm.javaClass.getMethod("setPowerSaveMode", Boolean::class.java)
+            method.invoke(pm, enabled)
+            true
         } catch (e: Throwable) {
             false
         }
