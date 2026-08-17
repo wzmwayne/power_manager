@@ -3,6 +3,8 @@ package com.power.manager.data
 import java.io.File
 
 object CpuUtil {
+    const val MIN_SAFE_RATIO = 0.2
+
     @Volatile
     private var cachedMax: Long = -1
 
@@ -28,9 +30,15 @@ object CpuUtil {
         val max = cpuinfoMaxFreq()
         var v = input
         if (v > 0 && v <= 1.0) v *= max
-        if (v > max) v = max.toDouble()
-        val threshold = max * 0.2
-        return if (v < threshold) -1 else v.toInt()
+        return sanitize(v.toLong(), max)
+    }
+
+    /** 审查单个频率值：非法/超频/低于安全线一律规范化，绝不把危险值交给内核。 */
+    fun sanitize(freqKHz: Long, max: Long = cpuinfoMaxFreq()): Int {
+        if (freqKHz <= 0) return -1
+        if (freqKHz > max) return max.toInt()
+        val threshold = (max * MIN_SAFE_RATIO).toLong()
+        return if (freqKHz < threshold) -1 else freqKHz.toInt()
     }
 
     fun resolveCpuFreq(tpl: Template): Int {
@@ -46,8 +54,6 @@ object CpuUtil {
         } else {
             tpl.cpuFreq.toLong()
         }
-        if (freq > max) return -1
-        val threshold = (max * 0.2).toLong()
-        return if (freq < threshold) -1 else freq.toInt()
+        return sanitize(freq, max)
     }
 }

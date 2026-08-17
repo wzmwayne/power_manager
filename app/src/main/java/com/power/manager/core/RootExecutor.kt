@@ -43,7 +43,9 @@ object RootExecutor {
     fun chmod(path: String, mode: String): Boolean = run("chmod $mode $path")
 
     fun writeCpuMaxFreq(freqKHz: Int): Boolean {
-        val target = if (freqKHz > 0) freqKHz else CpuUtil.cpuinfoMaxFreq().toInt()
+        val max = CpuUtil.cpuinfoMaxFreq()
+        val safe = CpuUtil.sanitize(freqKHz.toLong(), max)
+        val target = if (safe > 0) safe else max.toInt()
         val cmds = mutableListOf<String>()
         for (i in 0 until 32) {
             cmds += "if [ -f /sys/devices/system/cpu/cpu$i/cpufreq/scaling_max_freq ]; then echo $target > /sys/devices/system/cpu/cpu$i/cpufreq/scaling_max_freq; fi"
