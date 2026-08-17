@@ -58,7 +58,7 @@ LSPosed 系统框架电源管理模块（仅作用于 `system_server` 与系统�
 - 主管线：System API（system UID）。
 - 备分管线：su -c（300ms 超时 + 强制回收进程）。
 - 降级触发：SecurityException / IllegalStateException / RemoteException / 返回 false。
-- CPU 频率：无 API，强制走备分管线（Root Shell）。
+- CPU 频率：无 API，强制走备分管线（Root Shell）；写入内核前强制 `CpuUtil.sanitize` 兜底审查，非法/低于 20% 安全线/超频一律恢复 max，杜绝危险频率导致 CPU 挂起。
 - 熔断（CircuitBreaker）：策略项连续 5 次 API 失败 → 标记「不稳定」，下次直走备分。
 - 模式上报：system_server 写状态文件，App 经 ContentProvider 实时读取。
 - 日志分级：API 成功=DEBUG，API 失败转 Root=INFO，Root 失败=WARN。
@@ -67,6 +67,8 @@ LSPosed 系统框架电源管理模块（仅作用于 `system_server` 与系统�
 - 字段：name / max_bg / kill_delay / target_fps / cpu_freq / brightness_cap / anim_off / gps_policy / net_policy / bt_policy（-1 不限）。
 - 内置只读预设：-3 正常（全放行）、-2 省电、-1 极限。用户模板 ID≥0 递增，复制/空白（=复制 -3）新建。
 - 编辑页快捷填充仅 setText 不自动保存；CPU 动态换算（小数≤1.0 × cpuinfo_max_freq，>1.0 视为 KHz，20% 安全阈值低于自动转 -1 + Toast，防超频钳制）。
+- CPU 双审查：切换模板时 `sanitizeAllCpu` 强制审查所有模板，-2 哨兵（小数倍率）自动解析为真实 KHz 写回，非法值修复为安全值；写入内核前（`RootExecutor.writeCpuMaxFreq`）再次兜底审查。
+- 配置共享读取：`MODE_PRIVATE` 落盘 600 权限 system_server 读不到，每次 `save` 必须 `commit()` 同步落盘后经 Root `chmod shared_prefs 777` + `config.xml 666`。
 - 生命周期：应用即刷策略（CPU 即时，其余 Hook 实时读缓存）；删除激活模板回 -3；设置页重置所有模板。
 - 异常关机自动回退 -3：Hook `PowerManagerService` shutdown 写优雅退出标记，缺失且激活非 -3 时回退。
 
@@ -115,3 +117,5 @@ system_server、launcher、SystemUI、电话、输入法。另有硬豁免：电
 | 2026-08-16 | NetworkPolicyManager 不在公开 SDK，后台网络改纯反射 |
 | 2026-08-16 | 日志走内部文件 + logcat PowerManager + XposedBridge；App 日志页可复制 |
 | 2026-08-16 | 工作流纯 debug 无发行版；版本号经 printVersionName 任务读取 |
+| 2026-08-17 | CPU 双审查：切换模板全量审查并自动将 -2 哨兵解析为真实 KHz；写入内核前兜底 sanitize，防 CPU 挂起 |
+| 2026-08-17 | 配置共享读取：save 后 commit+su chmod shared_prefs 777/config.xml 666，供 system_server 读取 |
