@@ -59,9 +59,7 @@ fun SettingsScreen(padding: PaddingValues, onOpenLog: () -> Unit, onOpenRules: (
                 style = MaterialTheme.typography.bodySmall
             )
             Text(
-                "android
-com.android.providers.settings
-com.android.phone",
+                "android\ncom.android.providers.settings\ncom.android.phone",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.primary
             )
