@@ -93,8 +93,8 @@ com.android.phone
 - 注意：APatch/KernelSU 按应用白名单授权，system_server 进程内 `su` 可能被拒，状态如实反映该进程实际能力。
 
 ### UI（Compose + Material 3）
-- 完全默认原生 Material 3：`darkColorScheme()`/`lightColorScheme()` 跟随系统深浅色，无任何自定义颜色/样式；组件只用标准 M3（Card/Banner/AssistChip/AlertDialog/FilterChip/Switch），图标只用 material-icons-core（Home/Settings/Info/Delete/Edit/ArrowBack/Refresh）。
-- 首页不显示任何运行模式指示器；熔断时显示「允许模块运行」Banner，缺 Root 时显示 Root 缺失 Banner。
+- 完全默认原生 Material 3：`darkColorScheme()`/`lightColorScheme()` 跟随系统深浅色，无任何自定义颜色/样式；组件只用标准 M3（Card/AssistChip/AlertDialog/FilterChip/Switch），图标只用 material-icons-core（Home/Settings/Info/Delete/Edit/ArrowBack/Refresh）。注意 material3 1.3.0 无 Banner 组件，横幅用 Card+Text+TextButton 渲染。
+- 首页不显示任何运行模式指示器；熔断时显示「允许模块运行」横幅（Card+按钮），缺 Root 时显示 Root 缺失横幅提示。
 - 性能：熔断/root 轮询（3s）全部在 `Dispatchers.IO` 执行，绝不占主线程；Toast 用 `LaunchedEffect` 一次性显示并置空；`LazyColumn` items 带 key 且列表用 `remember(cfg)` 缓存。
 - 实时刷新：`AppStore.load()` 每次返回全新实例（弃用对象缓存），写操作一律「`copyOf` 深拷贝 → 改副本 → `save` → 整体替换 state」，杜绝就地改状态对象导致 Compose 不重组。
 
@@ -109,7 +109,7 @@ system_server、launcher、SystemUI、电话、输入法。另有硬豁免：电
 - 工作流全程仅 debug（assembleDebug + 上传 APK），**无任何发行版/Release 相关步骤**
 - 依赖仓库：Xposed api 走 `https://api.xposed.info/`（jcenter 已死）
 - `gradle.properties`：启用 `org.gradle.caching`，**禁用 `configuration-cache`**（与 AGP 8.7.3 冲突）
-- 构建状态：2026-08-16 修复后 CI 全绿（8 步全通过，约 1m30s）；2026-08-17 综合修复后再次 CI 全绿
+- 构建状态：2026-08-16 修复后 CI 全绿（8 步全通过，约 1m30s）；2026-08-17 综合修复后 CI 全绿；2026-08-17 原生化重构后 CI 全绿（修复 material3 1.3.0 无 Banner，改 Card 渲染）
 
 ## 决策日志
 
