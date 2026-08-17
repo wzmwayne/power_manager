@@ -16,7 +16,7 @@ object FpsHook {
             val cfg = ConfigProvider.config() ?: return
             val tpl = cfg.templates[cfg.currentTemplateId] ?: return
             val fps = tpl.targetFps
-            if (cfg.isRestricted(pkg) && fps >= 30) {
+            if (cfg.isManaged(pkg, true) && fps >= 30) {
                 if (appliedFps != fps) {
                     appliedFps = fps
                     LogUtil.i("前台受限应用 $pkg，帧率锁 $fps")

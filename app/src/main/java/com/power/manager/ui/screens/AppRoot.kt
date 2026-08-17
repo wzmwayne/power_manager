@@ -44,6 +44,7 @@ enum class Tab { HOME, SETTINGS, LOG }
 sealed class Route {
     object Tabs : Route()
     data class Edit(val template: Template) : Route()
+    object Rules : Route()
 }
 
 @Composable
@@ -67,6 +68,7 @@ fun AppRoot() {
     var tab by remember { mutableStateOf(Tab.HOME) }
     when (val r = route) {
         is Route.Edit -> EditScreen(template = r.template, onBack = { route = Route.Tabs })
+        Route.Rules -> AppRulesScreen(onBack = { route = Route.Tabs })
         Route.Tabs -> {
             Scaffold(
                 bottomBar = {
@@ -94,7 +96,7 @@ fun AppRoot() {
             ) { padding ->
                 when (tab) {
                     Tab.HOME -> HomeScreen(padding = padding, onEdit = { route = Route.Edit(it) })
-                    Tab.SETTINGS -> SettingsScreen(padding = padding, onOpenLog = { tab = Tab.LOG })
+                    Tab.SETTINGS -> SettingsScreen(padding = padding, onOpenLog = { tab = Tab.LOG }, onOpenRules = { route = Route.Rules })
                     Tab.LOG -> LogScreen(padding = padding, onBack = { tab = Tab.HOME })
                 }
             }

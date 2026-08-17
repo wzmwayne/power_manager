@@ -56,6 +56,7 @@ fun EditScreen(template: Template, onBack: () -> Unit) {
     var gps by remember { mutableStateOf(template.gpsPolicy) }
     var net by remember { mutableStateOf(template.netPolicy) }
     var bt by remember { mutableStateOf(template.btPolicy) }
+    var batterySaver by remember { mutableStateOf(template.batterySaver) }
     var toast by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(toast) {
@@ -110,6 +111,11 @@ fun EditScreen(template: Template, onBack: () -> Unit) {
                 Switch(checked = animOff, onCheckedChange = { animOff = it }, enabled = editable)
             }
 
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                Text("启用系统省电模式", modifier = Modifier.weight(1f))
+                Switch(checked = batterySaver, onCheckedChange = { batterySaver = it }, enabled = editable)
+            }
+
             Text("GPS 策略", style = MaterialTheme.typography.bodyMedium)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 ChoiceChip(gps == 0, { gps = 0 }, "禁用", editable)
@@ -159,7 +165,7 @@ fun EditScreen(template: Template, onBack: () -> Unit) {
                         if (fp == 0) fp = -1
                         var br = brightness.trim().toIntOrNull() ?: -1
                         if (br == 0) br = -1
-                        val t = Template(template.id, n, mb, kd, fp, cf, br, animOff, gps, net, bt)
+                        val t = Template(template.id, n, mb, kd, fp, cf, br, animOff, gps, net, bt, batterySaver)
                         val cfg = AppStore.load()
                         cfg.templates[t.id] = t
                         AppStore.save(cfg)

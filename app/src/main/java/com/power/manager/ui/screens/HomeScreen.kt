@@ -8,8 +8,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
@@ -79,7 +79,8 @@ fun HomeScreen(padding: PaddingValues, onEdit: (Template) -> Unit) {
                 .fillMaxSize()
                 .padding(padding)
                 .padding(inner)
-                .padding(16.dp),
+                .padding(16.dp)
+                .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             if (!rootAvailable) {
@@ -92,29 +93,24 @@ fun HomeScreen(padding: PaddingValues, onEdit: (Template) -> Unit) {
             CapabilityCard(capsInfo)
             Text("模板列表", style = MaterialTheme.typography.titleMedium)
             val sorted = remember(cfg) { cfg.templates.values.sortedBy { it.id } }
-            LazyColumn(
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.weight(1f)
-            ) {
-                items(sorted, key = { it.id }) { tpl ->
-                    TemplateCard(
-                        tpl = tpl,
-                        active = tpl.id == cfg.currentTemplateId,
-                        onApply = {
-                            val next = AppStore.copyOf(cfg)
-                            AppStore.applyTemplate(next, tpl)
-                            cfg = next
-                            toast = "已应用模板：${tpl.name}"
-                        },
-                        onEdit = { onEdit(tpl) },
-                        onDelete = {
-                            val next = AppStore.copyOf(cfg)
-                            AppStore.deleteTemplate(next, tpl)
-                            cfg = next
-                            toast = "已删除模板：${tpl.name}"
-                        }
-                    )
-                }
+            sorted.forEach { tpl ->
+                TemplateCard(
+                    tpl = tpl,
+                    active = tpl.id == cfg.currentTemplateId,
+                    onApply = {
+                        val next = AppStore.copyOf(cfg)
+                        AppStore.applyTemplate(next, tpl)
+                        cfg = next
+                        toast = "已应用模板：${tpl.name}"
+                    },
+                    onEdit = { onEdit(tpl) },
+                    onDelete = {
+                        val next = AppStore.copyOf(cfg)
+                        AppStore.deleteTemplate(next, tpl)
+                        cfg = next
+                        toast = "已删除模板：${tpl.name}"
+                    }
+                )
             }
             Button(onClick = { showNewDialog = true }, modifier = Modifier.fillMaxWidth()) {
                 Text("新建模板")

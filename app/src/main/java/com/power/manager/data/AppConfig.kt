@@ -6,20 +6,36 @@ import org.json.JSONObject
 data class AppConfig(
     val templates: MutableMap<Int, Template>,
     var currentTemplateId: Int = -3,
-    val whitelist: MutableSet<String>,
-    val blacklist: MutableSet<String>,
-    val overrides: MutableMap<String, Template>
+    var listMode: Int = LIST_MODE_BLACK,
+    val appList: MutableSet<String>,
+    val rules: MutableMap<String, AppRule>
 ) {
-
     fun isRestricted(pkg: String): Boolean {
         if (pkg.isBlank()) return false
-        if (whitelist.contains(pkg)) return false
-        return blacklist.contains(pkg)
+        return if (listMode == LIST_MODE_WHITE) {
+            !appList.contains(pkg)
+        } else {
+            appList.contains(pkg)
+        }
     }
 
-    fun restrictedPackages(): List<String> = blacklist.filter { !whitelist.contains(it) }
+    /** 白名单模式下无法从配置枚举「所有未列入的应用」，运行时由 system_server 枚举已装应用补全。 */
+    fun restrictedPackages(): List<String> =
+        if (listMode == LIST_MODE_WHITE) emptyList() else appList.toList()
 
-    fun overrideFor(pkg: String): Template? = overrides[pkg]
+    /** 单独应用规则优先判定模块是否管辖该应用。 */
+    fun isManaged(pkg: String, foreground: Boolean): Boolean {
+        val rule = rules[pkg] ?: return isRestricted(pkg)
+        return if (foreground) rule.enabledFg else rule.enabledBg
+    }
+
+    /** 后台杀死时间：单独应用规则优先，其次全局模板。 */
+    fun killDelayFor(pkg: String, fallback: Int): Int {
+        val rule = rules[pkg] ?: return fallback
+        return if (rule.killDelay >= 0) rule.killDelay else fallback
+    }
+
+    fun ruleFor(pkg: String): AppRule? = rules[pkg]
 
     fun toJson(): String {
         val o = JSONObject()
@@ -27,15 +43,18 @@ data class AppConfig(
         for ((id, v) in templates) t.put(id.toString(), v.toJson())
         o.put("templates", t)
         o.put("current", currentTemplateId)
-        o.put("whitelist", JSONArray(whitelist.toList()))
-        o.put("blacklist", JSONArray(blacklist.toList()))
-        val ov = JSONObject()
-        for ((pkg, v) in overrides) ov.put(pkg, v.toJson())
-        o.put("overrides", ov)
+        o.put("list_mode", listMode)
+        o.put("list", JSONArray(appList.toList()))
+        val r = JSONObject()
+        for ((pkg, v) in rules) r.put(pkg, v.toJson())
+        o.put("rules", r)
         return o.toString()
     }
 
     companion object {
+        const val LIST_MODE_BLACK = 0
+        const val LIST_MODE_WHITE = 1
+
         fun default(): AppConfig {
             val t = LinkedHashMap<Int, Template>()
             t[-3] = Template.BUILTIN_NORMAL
@@ -44,9 +63,9 @@ data class AppConfig(
             return AppConfig(
                 templates = t,
                 currentTemplateId = -3,
-                whitelist = mutableSetOf(),
-                blacklist = mutableSetOf(),
-                overrides = mutableMapOf()
+                listMode = LIST_MODE_BLACK,
+                appList = mutableSetOf(),
+                rules = mutableMapOf()
             )
         }
 
@@ -64,27 +83,24 @@ data class AppConfig(
                 for (b in listOf(Template.BUILTIN_NORMAL, Template.BUILTIN_SAVING, Template.BUILTIN_ULTRA)) {
                     if (!t.containsKey(b.id)) t[b.id] = b
                 }
-                val whitelist = mutableSetOf<String>()
-                val wj = o.optJSONArray("whitelist")
-                if (wj != null) for (i in 0 until wj.length()) {
-                    val v = wj.optString(i)
-                    if (v.isNotEmpty()) whitelist.add(v)
+                val list = mutableSetOf<String>()
+                val listMode = o.optInt("list_mode", LIST_MODE_BLACK)
+                val lj = o.optJSONArray("list")
+                if (lj != null) {
+                    for (i in 0 until lj.length()) {
+                        val v = lj.optString(i)
+                        if (v.isNotEmpty()) list.add(v)
+                    }
                 }
-                val blacklist = mutableSetOf<String>()
-                val bj = o.optJSONArray("blacklist")
-                if (bj != null) for (i in 0 until bj.length()) {
-                    val v = bj.optString(i)
-                    if (v.isNotEmpty()) blacklist.add(v)
-                }
-                val overrides = mutableMapOf<String, Template>()
-                val oj = o.optJSONObject("overrides")
-                if (oj != null) for (k in oj.keys()) oj.optJSONObject(k)?.let { overrides[k] = Template.fromJson(it) }
+                val rules = mutableMapOf<String, AppRule>()
+                val rj = o.optJSONObject("rules")
+                if (rj != null) for (k in rj.keys()) rj.optJSONObject(k)?.let { rules[k] = AppRule.fromJson(it) }
                 AppConfig(
                     templates = t,
                     currentTemplateId = o.optInt("current", -3),
-                    whitelist = whitelist,
-                    blacklist = blacklist,
-                    overrides = overrides
+                    listMode = listMode,
+                    appList = list,
+                    rules = rules
                 )
             } catch (e: Throwable) {
                 default()

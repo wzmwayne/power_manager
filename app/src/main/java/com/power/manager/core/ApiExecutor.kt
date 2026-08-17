@@ -83,6 +83,16 @@ object ApiExecutor {
         }
     }
 
+    fun setBatterySaver(enabled: Boolean): Boolean {
+        return try {
+            val ctx = systemContext() ?: return false
+            val pm = ctx.getSystemService(Context.POWER_SERVICE) as? android.os.PowerManager ?: return false
+            pm.setPowerSaveMode(enabled)
+        } catch (e: Throwable) {
+            false
+        }
+    }
+
     fun restrictUidBackground(uid: Int, restrict: Boolean): Boolean {
         return try {
             val ctx = systemContext() ?: return false

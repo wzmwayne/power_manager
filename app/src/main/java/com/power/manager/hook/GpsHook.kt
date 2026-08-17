@@ -85,7 +85,7 @@ object GpsHook {
         if (cap != null && !cap.gpsSupported) return false
         val cfg = ConfigProvider.config() ?: return false
         val tpl = cfg.templates[cfg.currentTemplateId] ?: return false
-        if (!cfg.isRestricted(pkg)) return false
+        if (!cfg.isManaged(pkg, pkg == CurrentApp.foreground)) return false
         return when (tpl.gpsPolicy) {
             0 -> true
             1 -> pkg != CurrentApp.foreground

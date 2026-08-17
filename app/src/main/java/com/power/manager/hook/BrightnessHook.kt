@@ -32,7 +32,7 @@ object BrightnessHook {
     private fun currentCap(): Int? {
         val fg = CurrentApp.foreground ?: return null
         val cfg = ConfigProvider.config() ?: return null
-        if (!cfg.isRestricted(fg)) return null
+        if (!cfg.isManaged(fg, true)) return null
         val tpl = cfg.templates[cfg.currentTemplateId] ?: return null
         val cap = tpl.brightnessCap
         return if (cap in 1..255) cap else null

@@ -34,11 +34,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import com.power.manager.core.ScopeGuard
+import com.power.manager.data.AppConfig
 import com.power.manager.ui.AppStore
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(padding: PaddingValues, onOpenLog: () -> Unit) {
+fun SettingsScreen(padding: PaddingValues, onOpenLog: () -> Unit, onOpenRules: () -> Unit) {
     val context = LocalContext.current
     var cfg by remember { mutableStateOf(AppStore.load()) }
     var newPkg by remember { mutableStateOf("") }
@@ -75,18 +76,45 @@ fun SettingsScreen(padding: PaddingValues, onOpenLog: () -> Unit) {
             )
             HorizontalDivider()
 
-            Text("保护白名单（命中即豁免）", style = MaterialTheme.typography.titleMedium)
-            PkgList(cfg.whitelist.toList(), onRemove = { pkg ->
-                val next = AppStore.copyOf(cfg)
-                next.whitelist.remove(pkg)
-                AppStore.save(next)
-                cfg = next
-            })
+            OutlinedButton(onClick = onOpenRules, modifier = Modifier.fillMaxWidth()) {
+                Text("应用单独设置（优先于所有规则）")
+            }
 
-            Text("限制黑名单（命中即按模板限制）", style = MaterialTheme.typography.titleMedium)
-            PkgList(cfg.blacklist.toList(), onRemove = { pkg ->
+            Text("应用名单模式", style = MaterialTheme.typography.titleMedium)
+            Text(
+                if (cfg.listMode == AppConfig.LIST_MODE_WHITE)
+                    "白名单模式：名单内应用豁免，其余应用一律按模板受限。"
+                else
+                    "黑名单模式：名单内应用按模板受限，其余应用不受影响。",
+                style = MaterialTheme.typography.bodySmall
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ChoiceChip(
+                    cfg.listMode == AppConfig.LIST_MODE_BLACK,
+                    {
+                        val next = AppStore.copyOf(cfg)
+                        next.listMode = AppConfig.LIST_MODE_BLACK
+                        AppStore.save(next)
+                        cfg = next
+                    },
+                    "黑名单",
+                    true
+                )
+                ChoiceChip(
+                    cfg.listMode == AppConfig.LIST_MODE_WHITE,
+                    {
+                        val next = AppStore.copyOf(cfg)
+                        next.listMode = AppConfig.LIST_MODE_WHITE
+                        AppStore.save(next)
+                        cfg = next
+                    },
+                    "白名单",
+                    true
+                )
+            }
+            PkgList(cfg.appList.toList(), onRemove = { pkg ->
                 val next = AppStore.copyOf(cfg)
-                next.blacklist.remove(pkg)
+                next.appList.remove(pkg)
                 AppStore.save(next)
                 cfg = next
             })
@@ -98,30 +126,17 @@ fun SettingsScreen(padding: PaddingValues, onOpenLog: () -> Unit) {
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = {
-                    val pkg = newPkg.trim()
-                    if (pkg.isNotEmpty()) {
-                        val next = AppStore.copyOf(cfg)
-                        next.blacklist.add(pkg)
-                        AppStore.save(next)
-                        cfg = next
-                        newPkg = ""
-                        toast = "已加入黑名单"
-                    }
-                }) { Text("加入黑名单") }
-                OutlinedButton(onClick = {
-                    val pkg = newPkg.trim()
-                    if (pkg.isNotEmpty()) {
-                        val next = AppStore.copyOf(cfg)
-                        next.whitelist.add(pkg)
-                        AppStore.save(next)
-                        cfg = next
-                        newPkg = ""
-                        toast = "已加入白名单"
-                    }
-                }) { Text("加入白名单") }
-            }
+            Button(onClick = {
+                val pkg = newPkg.trim()
+                if (pkg.isNotEmpty()) {
+                    val next = AppStore.copyOf(cfg)
+                    next.appList.add(pkg)
+                    AppStore.save(next)
+                    cfg = next
+                    newPkg = ""
+                    toast = "已加入名单"
+                }
+            }, modifier = Modifier.fillMaxWidth()) { Text("加入名单") }
 
             HorizontalDivider()
 

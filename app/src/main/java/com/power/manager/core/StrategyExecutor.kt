@@ -11,7 +11,8 @@ enum class Action(val key: String) {
     BLUETOOTH("bluetooth"),
     NETWORK("network"),
     CPU("cpu"),
-    BRIGHTNESS("brightness")
+    BRIGHTNESS("brightness"),
+    BATTERY_SAVER("battery_saver")
 }
 
 object StrategyExecutor {
@@ -102,5 +103,11 @@ object StrategyExecutor {
         Action.CPU,
         { LogUtil.w("CPU 频率无 API 主管线，直接走 Root"); false },
         { RootExecutor.writeCpuMaxFreq(freqKHz) }
+    )
+
+    fun setBatterySaver(enabled: Boolean): ExecMode = execute(
+        Action.BATTERY_SAVER,
+        { ApiExecutor.setBatterySaver(enabled) },
+        { RootExecutor.run("settings put global low_power ${if (enabled) 1 else 0}") }
     )
 }

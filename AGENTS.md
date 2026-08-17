@@ -35,8 +35,17 @@ LSPosed 系统框架电源管理模块（仅作用于 `system_server` 与系统�
 ## 架构
 
 ### 两层裁决链（优先级从高到低）
-1. 单独应用覆盖规则。
-2. 黑白名单 + 全局激活模板。
+1. 单独应用设置规则（`AppRule`：前台/后台启用 + 后台杀死时间，覆盖名单与模板）。
+2. 应用名单（单一名单 + 黑/白名单模式切换）+ 全局激活模板。
+
+### 应用名单（设置页单一名单 + 模式切换）
+- 黑名单模式：名单内应用按模板受限，其余不受影响。
+- 白名单模式：名单内应用豁免，其余应用一律按模板受限（运行时由 system_server 枚举已装应用补全网络限制）。
+- 名单字段：`list_mode`（0 黑名单 / 1 白名单）+ `list`（单一名单）。测试阶段不考虑旧版兼容，不做旧字段迁移。
+
+### 单独应用设置（AppRule，优先级最高）
+- 字段：`enabled_fg` / `enabled_bg`（前台/后台启用）+ `kill_delay`（后台杀死时间，-1 跟随模板）。
+- 存储：`rules` Map（键=包名，值=AppRule）。裁决时 `isManaged(pkg, fg)` 优先查规则，其次名单；`killDelayFor(pkg, tpl)` 优先规则值。
 
 ### 首次使用授权（仅 App 端一次）
 - App 首次启动进入全屏「严重警告」覆盖层：声明本应用为测试软件，警告深度系统干预可能导致卡顿/异常/数据丢失甚至无法开机，后果自负。
@@ -52,8 +61,8 @@ LSPosed 系统框架电源管理模块（仅作用于 `system_server` 与系统�
 - 日志分级：API 成功=DEBUG，API 失败转 Root=INFO，Root 失败=WARN。
 
 ### 模板管理
-- 字段：name / max_bg / kill_delay / target_fps / cpu_freq / brightness_cap / anim_off / gps_policy / net_policy / bt_policy（-1 不限）。
-- 内置只读预设：-3 正常（全放行）、-2 省电、-1 极限。用户模板 ID≥0 递增，复制/空白（=复制 -3）新建。
+- 字段：name / max_bg / kill_delay / target_fps / cpu_freq / brightness_cap / anim_off / gps_policy / net_policy / bt_policy / battery_saver（-1 不限；battery_saver 启用模板时开启系统省电模式）。
+- 内置只读预设：-3 正常（全放行）、-2 省电、-1 极限（均 battery_saver=true）。用户模板 ID≥0 递增，复制/空白（=复制 -3）新建。
 - 编辑页快捷填充仅 setText 不自动保存；CPU 动态换算（小数≤1.0 × cpuinfo_max_freq，>1.0 视为 KHz，20% 安全阈值低于自动转 -1 + Toast，防超频钳制）。
 - CPU 双审查：切换模板时 `sanitizeAllCpu` 强制审查所有模板，-2 哨兵（小数倍率）自动解析为真实 KHz 写回，非法值修复为安全值；写入内核前（`RootExecutor.writeCpuMaxFreq`）再次兜底审查。
 - 硬件扫描与能力自动禁用：首次授权确认时 `HardwareProbe.scan` 扫描 CPU 基准（max 频率/核数）并逐项测试能力（CPU 调频/帧率锁/动画/蓝牙/网络/GPS），落盘 `files/caps.json`（666）；运行时各 Hook 与调度按能力自动跳过不支持项，UI 编辑页自动禁用并提示。
@@ -88,8 +97,9 @@ com.android.phone
 ### UI（Compose + Material 3）
 - 完全默认原生 Material 3：`darkColorScheme()`/`lightColorScheme()` 跟随系统深浅色，无任何自定义颜色/样式；组件只用标准 M3（Card/AssistChip/AlertDialog/FilterChip/Switch），图标只用 material-icons-core（Home/Settings/Info/Delete/Edit/ArrowBack/Refresh）。注意 material3 1.3.0 无 Banner 组件，覆盖层用 Card+Text+Button 渲染。
 - 首次启动全屏「严重警告」覆盖层（`ConsentScreen`，5 秒倒计时后「允许模块运行」可用），确认后写 `consent` 标志永不再弹；确认同时后台 `HardwareProbe.scan` 落盘能力基准。
-- 首页不显示任何运行模式指示器；缺 Root 时显示 Root 缺失横幅提示。
-- 性能：root 轮询（3s）全部在 `Dispatchers.IO` 执行，绝不占主线程；Toast 用 `LaunchedEffect` 一次性显示并置空；`LazyColumn` items 带 key 且列表用 `remember(cfg)` 缓存。
+- 首页不显示任何运行模式指示器；缺 Root 时显示 Root 缺失横幅提示；首页整体可滚动（Column + verticalScroll，模板列表不再独占内部滚动）。
+- 设置页：单一名单 + 黑/白名单模式切换（FilterChip）；「应用单独设置」按钮进入 AppRulesScreen 管理每应用 AppRule。
+- 性能：root 轮询（3s）全部在 `Dispatchers.IO` 执行，绝不占主线程；Toast 用 `LaunchedEffect` 一次性显示并置空；模板列表用 `remember(cfg)` 缓存。
 - 实时刷新：`AppStore.load()` 每次返回全新实例（弃用对象缓存），写操作一律「`copyOf` 深拷贝 → 改副本 → `save` → 整体替换 state」，杜绝就地改状态对象导致 Compose 不重组。
 
 ### 保护白名单（杀后台永不触碰，核心系统）
@@ -126,3 +136,4 @@ system_server、launcher、SystemUI、电话、输入法。另有硬豁免：电
 | 2026-08-17 | 彻底原生化重构：熔断简化仅 /sdcard/pmon + /sdcard/pmoff 两个文件（删除 8 路径冗余与旧 /pmon 兼容）；删除运行模式指示器及 status.json/StatusProvider/ContentProvider 状态链（StatusReporter 仅保留 cpuFreqApplied/btDisabledByModule 供调度使用）；主题改系统默认 darkColorScheme/lightColorScheme 跟随深浅色、去全部自定义颜色；熔断时强制显示「允许模块运行」Banner，缺 Root 仅显示横幅提示 |
 | 2026-08-17 | 彻底移除熔断与授权：删除 PhysicalFuse.kt 及 pmon/pmoff 全部信标逻辑（模块注入/调度/5 个 Hook 不再做熔断检查）；AppStore 删除 authorize/revoke，新增 consent 持久标志；App 首次启动全屏「严重警告」覆盖层（ConsentScreen，声明为测试软件、警告危险性，5 秒倒计时后允许，仅一次）；HomeScreen 删除熔断横幅/授权弹窗，保留 Root 缺失横幅与硬件能力卡片；Settings 删除「停用模块（物理熔断）」入口 |
 | 2026-08-17 | 构件号自动生成：versionName 改 `1.0.0build{YYMMDDHHMM}`（如 1.0.0build2608170442），构件号由 workflow 用 `date +%y%m%d%H%M` 生成一次并经 `-PbuildNumber=` 传入（build.gradle.kts 支持属性覆盖，无属性时本地默认取当前时间） |
+| 2026-08-17 | 名单/规则重构：黑白名单合并为单一名单 + 黑/白名单模式切换（`list_mode`+`list`，测试阶段不考虑旧版兼容，无迁移）；新增 AppRule 单独应用设置（enabled_fg/enabled_bg/kill_delay，优先级最高，`isManaged`/`killDelayFor` 裁决）；设置页新增 AppRulesScreen；首页整体可滚动（Column+verticalScroll）；模板新增 battery_saver（启用时开启系统省电模式，ApiExecutor.setPowerSaveMode+Root 写 low_power 双模）；白名单模式下 system_server 枚举已装应用补全网络限制 |

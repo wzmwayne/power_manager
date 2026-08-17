@@ -54,9 +54,14 @@ object ModuleScheduler {
             }
             syncBluetooth(tpl)
             syncNetwork(cfg, tpl)
+            syncBatterySaver(tpl)
         } catch (e: Throwable) {
             LogUtil.e(e, "策略同步异常")
         }
+    }
+
+    private fun syncBatterySaver(tpl: Template) {
+        if (tpl.batterySaver) StrategyExecutor.setBatterySaver(true)
     }
 
     private fun syncBluetooth(tpl: Template) {
@@ -82,9 +87,24 @@ object ModuleScheduler {
             LogUtil.w("后台网络限制不受支持，已自动禁用")
             return
         }
-        for (pkg in cfg.restrictedPackages()) {
+        val pkgs: List<String> = if (cfg.listMode == AppConfig.LIST_MODE_WHITE) {
+            installedPackages().filter { !cfg.appList.contains(it) }
+        } else {
+            cfg.restrictedPackages()
+        }
+        for (pkg in pkgs) {
+            if (Protection.isProtected(pkg)) continue
             val uid = packageUid(pkg)
             if (uid > 0) StrategyExecutor.restrictUid(uid, true)
+        }
+    }
+
+    private fun installedPackages(): List<String> {
+        return try {
+            val ctx = ApiExecutor.systemContext() ?: return emptyList()
+            ctx.packageManager.getInstalledPackages(0).mapNotNull { it.packageName }
+        } catch (e: Throwable) {
+            emptyList()
         }
     }
 

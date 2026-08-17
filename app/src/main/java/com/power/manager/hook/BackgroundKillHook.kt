@@ -79,7 +79,7 @@ object BackgroundKillHook {
         val candidates = mutableListOf<Pair<String, Int>>()
         for (p in procs) {
             if (p.importance <= ActivityManager.RunningAppProcessInfo.IMPORTANCE_VISIBLE) continue
-            val pkg = p.pkgList.firstOrNull { it.isNotBlank() && cfg.isRestricted(it) && !Protection.isProtected(it) }
+            val pkg = p.pkgList.firstOrNull { it.isNotBlank() && cfg.isManaged(it, false) && !Protection.isProtected(it) }
                 ?: continue
             if (pkg == CurrentApp.foreground) continue
             candidates += pkg to p.importance
@@ -117,13 +117,13 @@ object BackgroundKillHook {
             try {
                 val cfg = ConfigProvider.config() ?: return@post
                 val tpl = cfg.templates[cfg.currentTemplateId] ?: return@post
-                if (!cfg.isRestricted(pkg)) return@post
+                if (!cfg.isManaged(pkg, false)) return@post
                 if (Protection.isProtected(pkg)) return@post
                 if (inCall()) {
                     LogUtil.i("通话中，豁免清理 $pkg")
                     return@post
                 }
-                val delay = tpl.killDelay
+                val delay = cfg.killDelayFor(pkg, tpl.killDelay)
                 if (delay <= 0) {
                     LogUtil.i("切后台清理 $pkg（即时）")
                     StrategyExecutor.forceStop(pkg)
@@ -141,7 +141,7 @@ object BackgroundKillHook {
         try {
             val cfg = ConfigProvider.config() ?: return
             val tpl = cfg.templates[cfg.currentTemplateId] ?: return
-            if (!cfg.isRestricted(pkg)) return
+            if (!cfg.isManaged(pkg, false)) return
             if (Protection.isProtected(pkg)) return
             if (pkg == CurrentApp.foreground) return
             if (inCall()) return

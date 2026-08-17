@@ -13,7 +13,8 @@ data class Template(
     val animOff: Boolean = false,
     val gpsPolicy: Int = 2,
     val netPolicy: Int = 1,
-    val btPolicy: Int = 1
+    val btPolicy: Int = 1,
+    val batterySaver: Boolean = false
 ) {
     val isBuiltin: Boolean get() = id < 0
     val isReadOnly: Boolean get() = id < 0
@@ -31,6 +32,7 @@ data class Template(
         o.put("gps_policy", gpsPolicy)
         o.put("net_policy", netPolicy)
         o.put("bt_policy", btPolicy)
+        o.put("battery_saver", if (batterySaver) 1 else 0)
         return o
     }
 
@@ -42,13 +44,15 @@ data class Template(
         val BUILTIN_SAVING = Template(
             -2, "省电模式",
             maxBg = 3, killDelay = 120, targetFps = 60, cpuFreq = -2,
-            brightnessCap = 200, animOff = true, gpsPolicy = 1, netPolicy = 0, btPolicy = 1
+            brightnessCap = 200, animOff = true, gpsPolicy = 1, netPolicy = 0, btPolicy = 1,
+            batterySaver = true
         )
 
         val BUILTIN_ULTRA = Template(
             -1, "极限模式",
             maxBg = 1, killDelay = 30, targetFps = 30, cpuFreq = -2,
-            brightnessCap = 80, animOff = true, gpsPolicy = 0, netPolicy = 0, btPolicy = 0
+            brightnessCap = 80, animOff = true, gpsPolicy = 0, netPolicy = 0, btPolicy = 0,
+            batterySaver = true
         )
 
         fun fromJson(o: JSONObject): Template {
@@ -63,7 +67,8 @@ data class Template(
                 animOff = o.optInt("anim_off", 0) == 1,
                 gpsPolicy = o.optInt("gps_policy", 2),
                 netPolicy = o.optInt("net_policy", 1),
-                btPolicy = o.optInt("bt_policy", 1)
+                btPolicy = o.optInt("bt_policy", 1),
+                batterySaver = o.optInt("battery_saver", 0) == 1
             )
         }
     }

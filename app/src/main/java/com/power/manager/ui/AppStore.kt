@@ -42,9 +42,8 @@ object AppStore {
     /** 深拷贝：可变容器全部换新实例，避免就地修改状态对象导致 Compose 不重组。 */
     fun copyOf(cfg: AppConfig): AppConfig = cfg.copy(
         templates = HashMap(cfg.templates),
-        whitelist = HashSet(cfg.whitelist),
-        blacklist = HashSet(cfg.blacklist),
-        overrides = HashMap(cfg.overrides)
+        appList = HashSet(cfg.appList),
+        rules = HashMap(cfg.rules)
     )
 
     /** MODE_PRIVATE 落盘权限为 600，system_server 无法读取。必须每次保存后经 Root 开放目录与文件读取，否则模块读不到配置。 */
@@ -94,6 +93,7 @@ object AppStore {
         save(cfg)
         val effectiveFreq = if (root) CpuUtil.resolveCpuFreq(tpl) else -1
         if (tpl.cpuFreq != -1) RootExecutor.writeCpuMaxFreq(effectiveFreq)
+        if (tpl.batterySaver) RootExecutor.run("settings put global low_power 1")
     }
 
     /** 切换模板前强制审查所有模板的 CPU 限制值：哨兵(小数倍率)自动解析为真实 KHz，非法值修复为安全值，防止危险频率落入内核。 */
