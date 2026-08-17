@@ -68,6 +68,10 @@ LSPosed 系统框架电源管理模块（仅作用于 `system_server` 与系统�
 - 内置只读预设：-3 正常（全放行）、-2 省电、-1 极限。用户模板 ID≥0 递增，复制/空白（=复制 -3）新建。
 - 编辑页快捷填充仅 setText 不自动保存；CPU 动态换算（小数≤1.0 × cpuinfo_max_freq，>1.0 视为 KHz，20% 安全阈值低于自动转 -1 + Toast，防超频钳制）。
 - CPU 双审查：切换模板时 `sanitizeAllCpu` 强制审查所有模板，-2 哨兵（小数倍率）自动解析为真实 KHz 写回，非法值修复为安全值；写入内核前（`RootExecutor.writeCpuMaxFreq`）再次兜底审查。
+- 硬件扫描与能力自动禁用：授权时 `HardwareProbe.scan` 扫描 CPU 基准（max 频率/核数）并逐项测试能力（CPU 调频/帧率锁/动画/蓝牙/网络/GPS），落盘 `files/caps.json`（666）；运行时各 Hook 与调度按能力自动跳过不支持项，UI 编辑页自动禁用并提示。
+- max_bg 强制：`BackgroundKillHook` 15s 周期枚举后台受限进程（按 importance 排序），超限清理最不重要者。
+- 熔断全局标志：`PhysicalFuse.tripped` 由轮询置位，全部 Hook 回调入口检查后跳过，熔断后模块整体停用而非仅停调度。
+- 授权状态：授权/停用成功后同步 `cfg.authorized` 并在首页展示硬件能力卡片。
 - 配置共享读取：`MODE_PRIVATE` 落盘 600 权限 system_server 读不到，每次 `save` 必须 `commit()` 同步落盘后经 Root `chmod shared_prefs 777` + `config.xml 666`。
 - 生命周期：应用即刷策略（CPU 即时，其余 Hook 实时读缓存）；删除激活模板回 -3；设置页重置所有模板。
 - 异常关机自动回退 -3：Hook `PowerManagerService` shutdown 写优雅退出标记，缺失且激活非 -3 时回退。
@@ -119,3 +123,4 @@ system_server、launcher、SystemUI、电话、输入法。另有硬豁免：电
 | 2026-08-16 | 工作流纯 debug 无发行版；版本号经 printVersionName 任务读取 |
 | 2026-08-17 | CPU 双审查：切换模板全量审查并自动将 -2 哨兵解析为真实 KHz；写入内核前兜底 sanitize，防 CPU 挂起 |
 | 2026-08-17 | 配置共享读取：save 后 commit+su chmod shared_prefs 777/config.xml 666，供 system_server 读取 |
+| 2026-08-17 | 授权时硬件扫描（CPU 基准）+ 能力测试落盘 caps.json，运行时自动禁用不支持项；实现 maxBg 强制；熔断全局标志覆盖全部 Hook；authorized 状态同步 |
