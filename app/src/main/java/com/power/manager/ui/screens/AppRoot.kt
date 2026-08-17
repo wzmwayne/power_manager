@@ -118,7 +118,7 @@ fun ConsentScreen(onAllow: () -> Unit) {
                 ) {
                     Text("严重警告", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.error)
                     Text(
-                        "Power Manager 是测试软件，会对系统进行深度电源管理干预：强制清理后台进程、限制帧率与 CPU 频率、禁用动画、钳制亮度、关闭蓝牙、限制后台网络与 GPS。",
+                        "Power Manager 是测试软件，会注入应用进程执行模板策略：后台应用自杀清理、限制帧率、禁用动画、钳制亮度、限制 GPS、关闭并锁定蓝牙。",
                         style = MaterialTheme.typography.bodyMedium
                     )
                     Text(

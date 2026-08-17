@@ -13,7 +13,7 @@
             android:value="true" />
         <meta-data
             android:name="xposeddescription"
-            android:value="系统框架电源管理模块（仅 system_server 生效）" />
+            android:value="LSPosed 电源管理：注入用户应用执行模板策略（后台清理/亮度/帧率/动画/GPS/蓝牙），不依赖 root" />
         <meta-data
             android:name="xposedminversion"
             android:value="82" />

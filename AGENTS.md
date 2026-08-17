@@ -4,11 +4,12 @@
 
 ## 项目定位
 
-LSPosed 系统框架电源管理模块（仅作用于 `system_server` 与系统框架进程），通过「System API 主管线 + Root Shell 备分管线」双模执行器实现精细化功耗压制。
+**目标是 LSPosed 框架**：完全基于 LSPosed 注入 + Xposed Hook 能力实现，不依赖 root、不做系统层强制手段。策略执行下沉到每个用户应用进程内（`AppPolicyHook`），迫使应用符合当前模板（亮度/帧率/动画/GPS/蓝牙/后台冻结与自杀）；`system_server` 仅保留最小系统层能力（蓝牙强制关闭，非 root 下应用进程无法主动关闭蓝牙）。
 
 - 仓库：`https://github.com/wzmwayne/power_manager`
 - 应用显示名：`Power Manager`
 - 许可证：GPL v3
+- 运行前提：LSPosed 管理器为模块勾选作用域（建议勾选全部应用；`android` 作用域用于系统层蓝牙）
 
 ## 铁律（不可违反）
 
@@ -46,17 +47,33 @@ LSPosed 系统框架电源管理模块（仅作用于 `system_server` 与系统�
 - `core/ConfigChannel.kt`：system_server 等进程经 ContentProvider query 读配置，3s TTL 缓存。
 - `core/AppLog.kt`：统一日志（logcat `PowerManager` + `XposedBridge.log` + 经 ContentProvider insert 推送到 App 落盘）。
 - `ui/AppConfigProvider.kt`：ContentProvider——`query /config` 返回配置 JSON，`insert /log` 接收各进程日志行。
-- `ui/AppLogStore.kt`：App 侧统一日志落盘（各进程经 /log insert 推送，单线程顺序写、2000 行截断）。
+- `ui/AppLogStore.kt`：App 侧统一日志落盘（各进程经 /log insert 推送，单线程顺序写、5000 行截断）。
 - 数据模型已改：`AppConfig` 删 `listMode`/`appList`（规则不存在即默认受管）；`Template` 删 `maxBg`/`cpuFreq`，新增 `cpuThrottle`（0/1/2 档）。
 
 ### 重构落地情况（2026-08-17 已完成，CI 验证通过）
-- 新增 `ui/AppLogStore.kt`：App 侧统一日志落盘（单线程顺序写、2000 行截断、`read()`/`logFile()` 供日志页）。
+- 新增 `ui/AppLogStore.kt`：App 侧统一日志落盘（单线程顺序写、5000 行截断、`read()`/`logFile()` 供日志页）。
 - `AndroidManifest.xml` 已注册 `<provider android:name=".ui.AppConfigProvider" authorities="com.power.manager" exported="true">`。
 - `PowerManagerModule.kt` 精简为作用域白名单 + system_server 注入日志（`AppLog`），不再注册任何 Hook。
 - `ui/AppStore.kt` 删除 Root/chmod/CPU/名单旧逻辑；`copyOf` 只深拷贝 templates/rules；applyTemplate 仅写配置激活模板。
 - `ui/screens/`：SettingsScreen 删除名单模式与「清除异常关机回退」（机制已删）；HomeScreen 删除 Root 横幅与硬件能力卡片，summary 改 cpuThrottle；EditScreen 按新 Template 签名（命名参数）+ cpuThrottle 三档；LogScreen 改读 AppLogStore。
 - `MainActivity` 删除 `ensureShared`（chmod 方案废弃）；`AppRoot` 删除授权后 `HardwareProbe.scan`（能力扫描机制废弃）。
 - `AppConfigProvider.onCreate` 补 `AppStore.init`（provider 可能先于 Activity 启动）。
+
+### 应用进程策略执行器（2026-08-17 新方向，目标 LSPosed 框架，未提交）
+- `hook/AppPolicyHook.kt`：注入每个用户应用进程，应用内策略：
+  - 后台跟踪：hook `Activity.onResume/onPause` 维护前台计数，确认整应用后台（500ms 延迟判定，防 A->B 切换误判）。
+  - 后台自杀：killDelay 到点后应用自杀（`Process.killProcess` 自身），下次启动为系统冷启动，效果等同删除后台；0 立即杀，<0 不杀；回前台取消。
+  - 后台冻结：cpuThrottle>0 时后台拒绝 `WakeLock.acquire`。
+  - 亮度钳制：brightnessCap 启用时钳制窗口亮度（`WindowManager.LayoutParams.screenBrightness` ≤ cap/255）。
+  - 帧率锁：targetFps 优先，未设时 cpuThrottle>=2 默认 30；hook `Choreographer.getFrameIntervalNanos` 拉大帧间隔。
+  - 动画禁用：animOff 或 cpuThrottle>0 时 `ValueAnimator/Animation.getDuration` 置 0（动画瞬间完成）。
+  - GPS 限制：gpsPolicy=0 全拦、=1 后台拦（`getLastKnownLocation` 返回 null / `requestLocationUpdates` 不注册）。
+  - 蓝牙锁定：btPolicy=0 时本进程拦截 `BluetoothAdapter.enable/setBluetoothEnabled(true)`。
+  - 受保护进程（Protection.isProtected）仅做蓝牙拦截，跳过破坏性策略。
+- `hook/SystemScheduler.kt`：system_server 周期任务（蓝牙锁定检查每 30s）。
+- `hook/BluetoothHook.kt`：系统层蓝牙（system_server）：BluetoothManagerService 开启拦截 + 周期强制关闭。
+- 已废弃并删除：系统层 force-stop 方案（`BackgroundKillHook`/`KillScheduler`）——后台清理改为应用进程自杀。
+- 模板映射：killDelay->自杀倒计时；targetFps/cpuThrottle->帧率；animOff/cpuThrottle->禁动画；brightnessCap->亮度钳制；gpsPolicy->GPS；btPolicy->蓝牙；netPolicy/batterySaver 暂未在应用层实现。
 
 ## 架构（重构目标态）
 
@@ -87,16 +104,15 @@ LSPosed 系统框架电源管理模块（仅作用于 `system_server` 与系统�
 - 性能约定：日志轮询（3s）在 `Dispatchers.IO`；Toast 用 `LaunchedEffect` 一次性显示并置空；模板列表用 `remember(cfg)` 缓存。
 - 实时刷新：`AppStore.load()` 每次返回全新实例；写操作一律「`copyOf` 深拷贝 → 改副本 → `save` → 整体替换 state」，杜绝就地改状态导致 Compose 不重组。
 
-### Hook 拦截点（system_server 作用域，重构前设计）
-- 切后台杀进程（Hook `setResumedActivityUncheckLocked`，按模板 kill_delay，通话中豁免）。
-- 帧率锁、动画三档全置 0、亮度钳制（仅受限应用）。
-- 蓝牙关闭/还原、后台网络单应用 UID 限制（API 失败即放弃不降级，防误伤）、GPS 按策略返回缓存坐标。
-- CPU 频率：强制走 Root 写 `scaling_max_freq`，60s 定时重刷；写入内核前兜底 sanitize 防危险频率导致 CPU 挂起。
+### 策略执行架构（现行，取代旧 system_server 设计）
+- 应用进程内（主）：`AppPolicyHook` 注入每个用户应用，后台自杀/冻结/亮度/帧率/动画/GPS/蓝牙（详见上文「应用进程策略执行器」）。
+- 系统层（最小）：`BluetoothHook`（system_server 强制关闭蓝牙）+ `SystemScheduler`（30s 周期检查）。
+- 旧「Hook 拦截点（重构前设计）」（system_server force-stop / Root 写 CPU 频率等）已废弃，勿再实现。
 
 ### 作用域与模块识别
-- `assets/scopes.txt` 4 行：system / android / com.android.providers.settings / com.android.phone。
-- `AndroidManifest.xml` 必须带 `xposedminversion=82` metadata（LSPosed 以它判定 legacy 模块，`assets/xposed_init` 仅作入口）；当前清单含 `xposedmodule/xposeddescription/xposedminversion/xposedscope`（scope=android;com.android.providers.settings;com.android.phone）。
-- 模块实际仅对 `android`（system_server）注册 Hook，其余作用域仅为兼容保留。
+- `assets/scopes.txt` 4 行：system / android / com.android.providers.settings / com.android.phone（仅为建议参考）。
+- `AndroidManifest.xml` 必须带 `xposedminversion=82` metadata（LSPosed 以它判定 legacy 模块，`assets/xposed_init` 仅作入口）；当前清单含 `xposedmodule/xposeddescription/xposedminversion/xposedscope`。
+- 注入策略：运行时对所有进程分派——`android`（system_server）做系统层蓝牙；其余进程注入 `AppPolicyHook`；模块自身进程跳过。用户需在 LSPosed 管理器为模块勾选全部应用（manifest 的 xposedscope 仅为建议）。
 
 ## 构建工作流
 
@@ -128,3 +144,4 @@ LSPosed 系统框架电源管理模块（仅作用于 `system_server` 与系统�
 | 2026-08-17 | 名单/规则重构：单一名单 + 黑/白名单模式切换；新增 AppRule 单独应用设置；模板新增 battery_saver（反射 setPowerSaveMode + Root 写 low_power 双模） |
 | 2026-08-17 | **配置互通原生化重构（未提交，中间态）**：删整个 hook/执行器/Root 层与 CpuUtil/LogUtil/全部 hook；新增 ContentProvider 配置/日志通道（AppConfigProvider + ConfigChannel 3s TTL + AppLog 统一日志 + SysContext 任意进程取 Context）；数据模型删名单改「规则缺省即受管」、Template 删 maxBg/cpuFreq 改 cpuThrottle 三档 |
 | 2026-08-17 | **配置互通重构落地（CI 验证通过）**：新增 AppLogStore 统一落盘；manifest 注册 AppConfigProvider；模块入口精简为作用域白名单+日志；AppStore 删除 Root/chmod/CPU/名单旧逻辑；Settings/Home/Edit/Log 全 UI 适配新模型；删除名单模式、异常关机回退、硬件能力扫描与 Root 横幅 UI；提交后 CI 全绿 |
+| 2026-08-17 | **目标是 LSPosed 框架（应用进程策略执行方向，未提交）**：不依赖 root、少依赖系统层；策略下沉到每个用户应用进程（AppPolicyHook：后台跟踪/自杀/冻结/WakeLock 拒绝/亮度钳制/帧率锁/禁动画/GPS 限制/蓝牙开启拦截）；后台清理改为应用进程自杀（killDelay 到点自杀，切回冷启动，等同删后台），废弃系统层 force-stop；system_server 仅保留蓝牙最小系统层能力 |

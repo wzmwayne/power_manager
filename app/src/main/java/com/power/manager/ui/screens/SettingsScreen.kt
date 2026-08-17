@@ -55,11 +55,11 @@ fun SettingsScreen(padding: PaddingValues, onOpenLog: () -> Unit, onOpenRules: (
         ) {
             Text("作用域（推荐）", style = MaterialTheme.typography.titleMedium)
             Text(
-                "模块仅注入 system_server 等系统作用域，绝不 Hook 其他应用。请按以下推荐在 LSPosed 管理器勾选作用域：",
+                "模块注入所有用户应用执行模板策略（后台清理/亮度/帧率/动画/GPS/蓝牙），不依赖 root。请在 LSPosed 管理器为模块勾选全部应用；android（system_server）用于蓝牙锁定。",
                 style = MaterialTheme.typography.bodySmall
             )
             Text(
-                "android\ncom.android.providers.settings\ncom.android.phone",
+                "全部应用\n（android 系统服务用于蓝牙锁定）",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.primary
             )

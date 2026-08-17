@@ -9,11 +9,11 @@ import java.util.concurrent.Executors
 
 /**
  * App 侧统一日志落盘：接收各进程经 ContentProvider（/log）推送的日志行，写入内部文件。
- * 单线程顺序写，按行数截断防膨胀；日志页读取展示并可复制。
+ * 单线程顺序写，按行数截断防膨胀（5000 行）；日志页读取展示并可复制。
  */
 object AppLogStore {
     private const val FILE_NAME = "power_manager.log"
-    private const val MAX_LINES = 2000
+    private const val MAX_LINES = 5000
 
     private lateinit var file: File
     private val writer = Executors.newSingleThreadExecutor()
