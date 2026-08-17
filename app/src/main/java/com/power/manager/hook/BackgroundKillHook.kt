@@ -70,7 +70,7 @@ object BackgroundKillHook {
         }
     }
 
-    /** max_bg：后台受限进程数超限时，清理最久未用的进程。 */
+    /** max_bg：后台受限进程数超限时，清理最不重要（缓存后台）的进程。 */
     private fun enforceMaxBg() {
         if (PhysicalFuse.tripped) return
         val cfg = ConfigProvider.config() ?: return
@@ -79,20 +79,20 @@ object BackgroundKillHook {
         val ctx = ApiExecutor.systemContext() ?: return
         val am = ctx.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager ?: return
         val procs = am.runningAppProcesses ?: return
-        val candidates = mutableListOf<Pair<String, Long>>()
+        val candidates = mutableListOf<Pair<String, Int>>()
         for (p in procs) {
             if (p.importance <= ActivityManager.RunningAppProcessInfo.IMPORTANCE_VISIBLE) continue
             val pkg = p.pkgList.firstOrNull { it.isNotBlank() && cfg.isRestricted(it) && !Protection.isProtected(it) }
                 ?: continue
             if (pkg == CurrentApp.foreground) continue
-            candidates += pkg to p.lastUsedTime
+            candidates += pkg to p.importance
         }
         if (candidates.size <= tpl.maxBg) return
-        val sorted = candidates.sortedBy { it.second }
+        val sorted = candidates.sortedByDescending { it.second }
         val overflow = candidates.size - tpl.maxBg
         for (i in 0 until overflow) {
             val pkg = sorted[i].first
-            LogUtil.i("后台受限进程超限（上限 ${tpl.maxBg}），清理最久未用：$pkg")
+            LogUtil.i("后台受限进程超限（上限 ${tpl.maxBg}），清理：$pkg")
             StrategyExecutor.forceStop(pkg)
         }
     }
