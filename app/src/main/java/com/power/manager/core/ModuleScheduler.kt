@@ -29,12 +29,6 @@ object ModuleScheduler {
         override fun run() {
             if (!running) return
             try {
-                if (PhysicalFuse.isTripped()) {
-                    LogUtil.w("运行期间检测到物理熔断，强制恢复 CPU 并停止调度")
-                    RootExecutor.restoreCpu()
-                    running = false
-                    return
-                }
                 ConfigProvider.reload()
                 syncStrategies()
                 val now = System.currentTimeMillis()

@@ -3,8 +3,6 @@ package com.power.manager
 import com.power.manager.core.ConfigProvider
 import com.power.manager.core.EmergencyGuard
 import com.power.manager.core.ModuleScheduler
-import com.power.manager.core.PhysicalFuse
-import com.power.manager.core.RootExecutor
 import com.power.manager.core.ScopeGuard
 import com.power.manager.hook.AnimationHook
 import com.power.manager.hook.BackgroundKillHook
@@ -18,13 +16,6 @@ import de.robv.android.xposed.callbacks.XC_LoadPackage
 class PowerManagerModule : IXposedHookLoadPackage {
     override fun handleLoadPackage(lpparam: XC_LoadPackage.LoadPackageParam) {
         try {
-            // 物理熔断：注入前轮询，任一命中即静默退出并强制恢复 CPU
-            if (PhysicalFuse.isTripped()) {
-                LogUtil.w("物理熔断命中或未授权，模块静默退出（不注入）")
-                RootExecutor.restoreCpu()
-                return
-            }
-
             // 作用域白名单防护：仅允许注入声明的系统作用域，绝不 Hook 其他应用
             if (!ScopeGuard.isAllowed(lpparam.packageName)) {
                 LogUtil.d("跳过非作用域进程：${lpparam.packageName}")

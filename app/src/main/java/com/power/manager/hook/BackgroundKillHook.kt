@@ -6,7 +6,6 @@ import android.os.Handler
 import android.os.HandlerThread
 import com.power.manager.core.ApiExecutor
 import com.power.manager.core.ConfigProvider
-import com.power.manager.core.PhysicalFuse
 import com.power.manager.core.Protection
 import com.power.manager.core.StrategyExecutor
 import com.power.manager.util.LogUtil
@@ -32,7 +31,6 @@ object BackgroundKillHook {
                 object : XC_MethodHook() {
                     override fun afterHookedMethod(param: MethodHookParam) {
                         try {
-                            if (PhysicalFuse.tripped) return
                             val pkg = extractPackageName(param) ?: return
                             CurrentApp.foreground = pkg
                             FpsHook.onForegroundChanged(pkg)
@@ -72,7 +70,6 @@ object BackgroundKillHook {
 
     /** max_bg：后台受限进程数超限时，清理最不重要（缓存后台）的进程。 */
     private fun enforceMaxBg() {
-        if (PhysicalFuse.tripped) return
         val cfg = ConfigProvider.config() ?: return
         val tpl = cfg.templates[cfg.currentTemplateId] ?: return
         if (tpl.maxBg < 0) return
@@ -118,7 +115,6 @@ object BackgroundKillHook {
     private fun scheduleKill(pkg: String) {
         handler.post {
             try {
-                if (PhysicalFuse.tripped) return@post
                 val cfg = ConfigProvider.config() ?: return@post
                 val tpl = cfg.templates[cfg.currentTemplateId] ?: return@post
                 if (!cfg.isRestricted(pkg)) return@post
@@ -143,7 +139,6 @@ object BackgroundKillHook {
 
     private fun tryKill(pkg: String) {
         try {
-            if (PhysicalFuse.tripped) return
             val cfg = ConfigProvider.config() ?: return
             val tpl = cfg.templates[cfg.currentTemplateId] ?: return
             if (!cfg.isRestricted(pkg)) return

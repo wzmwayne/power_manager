@@ -3,7 +3,6 @@ package com.power.manager.hook
 import android.location.Location
 import com.power.manager.core.ConfigProvider
 import com.power.manager.core.HardwareProbe
-import com.power.manager.core.PhysicalFuse
 import com.power.manager.util.LogUtil
 import de.robv.android.xposed.XC_MethodHook
 import de.robv.android.xposed.XposedBridge
@@ -82,7 +81,6 @@ object GpsHook {
     }
 
     private fun shouldBlock(pkg: String): Boolean {
-        if (PhysicalFuse.tripped) return false
         val cap = HardwareProbe.caps
         if (cap != null && !cap.gpsSupported) return false
         val cfg = ConfigProvider.config() ?: return false

@@ -136,11 +136,6 @@ fun SettingsScreen(padding: PaddingValues, onOpenLog: () -> Unit) {
                 toast = if (AppStore.clearEmergency()) "已清除异常关机回退" else "当前无异常回退标记"
             }, modifier = Modifier.fillMaxWidth()) { Text("清除异常关机回退") }
 
-            OutlinedButton(onClick = {
-                val ok = AppStore.revoke()
-                toast = if (ok) "已创建禁用文件，重启后模块停用" else "操作失败（需要 Root 权限）"
-            }, modifier = Modifier.fillMaxWidth()) { Text("停用模块（物理熔断）") }
-
             OutlinedButton(onClick = onOpenLog, modifier = Modifier.fillMaxWidth()) { Text("查看日志") }
         }
     }

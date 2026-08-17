@@ -38,8 +38,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.power.manager.core.HardwareCap
-import com.power.manager.core.HardwareProbe
-import com.power.manager.core.PhysicalFuse
 import com.power.manager.data.AppConfig
 import com.power.manager.data.Template
 import com.power.manager.ui.AppStore
@@ -56,14 +54,11 @@ fun HomeScreen(padding: PaddingValues, onEdit: (Template) -> Unit) {
     var cfg by remember { mutableStateOf(AppStore.load()) }
     var rootAvailable by remember { mutableStateOf(AppStore.isRoot()) }
     var capsInfo by remember { mutableStateOf(readCaps()) }
-    var fuseTripped by remember { mutableStateOf(true) }
-    var showAuthDialog by remember { mutableStateOf(false) }
     var showNewDialog by remember { mutableStateOf(false) }
     var toast by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) {
         while (true) {
-            fuseTripped = withContext(Dispatchers.IO) { PhysicalFuse.isTripped() }
             rootAvailable = withContext(Dispatchers.IO) { AppStore.isRoot() }
             delay(3000)
         }
@@ -87,23 +82,14 @@ fun HomeScreen(padding: PaddingValues, onEdit: (Template) -> Unit) {
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            if (fuseTripped) {
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("模块尚未授权或已被停用，需完成授权（需 Root）后重启生效。", style = MaterialTheme.typography.bodyMedium)
-                        TextButton(onClick = { showAuthDialog = true }, modifier = Modifier.align(Alignment.End)) {
-                            Text("允许模块运行")
-                        }
-                    }
-                }
-            } else if (!rootAvailable) {
+            if (!rootAvailable) {
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(16.dp)) {
                         Text("未检测到 Root 权限，CPU 调频不可用，模块仍以系统 API 模式运行。", style = MaterialTheme.typography.bodyMedium)
                     }
                 }
             }
-            if (!fuseTripped) CapabilityCard(capsInfo)
+            CapabilityCard(capsInfo)
             Text("模板列表", style = MaterialTheme.typography.titleMedium)
             val sorted = remember(cfg) { cfg.templates.values.sortedBy { it.id } }
             LazyColumn(
@@ -136,25 +122,6 @@ fun HomeScreen(padding: PaddingValues, onEdit: (Template) -> Unit) {
         }
     }
 
-    if (showAuthDialog) {
-        AuthDialog(
-            onConfirm = {
-                val cap = HardwareProbe.scan(context)
-                capsInfo = readCaps()
-                val ok = AppStore.authorize()
-                rootAvailable = AppStore.isRoot()
-                val unsupported = cap.unsupportedList()
-                toast = if (ok) {
-                    val base = "授权成功，已保存硬件基准，重启后生效"
-                    if (unsupported.isEmpty()) base else "$base；不支持：${unsupported.joinToString("、")}"
-                } else {
-                    "授权失败（需要 Root 权限）"
-                }
-                showAuthDialog = false
-            },
-            onDismiss = { showAuthDialog = false }
-        )
-    }
     if (showNewDialog) {
         NewTemplateDialog(
             cfg = cfg,
@@ -246,35 +213,6 @@ fun TemplateCard(
             }
         }
     }
-}
-
-@Composable
-fun AuthDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
-    var count by remember { mutableStateOf(3) }
-    LaunchedEffect(Unit) {
-        while (count > 0) {
-            delay(1000)
-            count--
-        }
-    }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("允许模块运行") },
-        text = {
-            Text(
-                if (count > 0)
-                    "请阅读风险提示：本模块会强制限制系统资源，极端策略可能造成卡顿或异常。倒计时 $count 秒后可确认。"
-                else
-                    "即将创建 /sdcard/pmon 授权信标并清除 /sdcard/pmoff 禁用文件。确认后请重启手机，模块正式注入生效。"
-            )
-        },
-        confirmButton = {
-            Button(enabled = count <= 0, onClick = onConfirm) { Text("确认授权") }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("取消") }
-        }
-    )
 }
 
 @Composable

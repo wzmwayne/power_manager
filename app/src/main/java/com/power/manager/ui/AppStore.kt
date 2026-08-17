@@ -3,7 +3,6 @@ package com.power.manager.ui
 import android.content.Context
 import android.content.SharedPreferences
 import com.power.manager.core.EmergencyGuard
-import com.power.manager.core.PhysicalFuse
 import com.power.manager.core.RootChecker
 import com.power.manager.core.RootExecutor
 import com.power.manager.data.AppConfig
@@ -14,12 +13,19 @@ import java.io.File
 object AppStore {
     private const val PREFS = "config"
     private const val KEY = "config"
+    private const val KEY_CONSENT = "consent"
     private lateinit var prefs: SharedPreferences
     private var prefsDir: File? = null
 
     fun init(ctx: Context) {
         prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         prefsDir = File(ctx.applicationInfo.dataDir, "shared_prefs")
+    }
+
+    fun isConsented(): Boolean = prefs.getBoolean(KEY_CONSENT, false)
+
+    fun setConsented() {
+        prefs.edit().putBoolean(KEY_CONSENT, true).commit()
     }
 
     /** 每次都解析全新实例，保证调用方持有独立对象，写操作后可整体替换触发重组。 */
@@ -119,19 +125,6 @@ object AppStore {
         for (id in user) cfg.templates.remove(id)
         cfg.currentTemplateId = -3
         save(cfg)
-    }
-
-    /** 授权：创建 /sdcard/pmon 授权信标（硬件扫描由调用方执行一次，避免重复）。 */
-    fun authorize(): Boolean {
-        val ok = PhysicalFuse.authorize()
-        RootChecker.forceRefresh()
-        return ok
-    }
-
-    fun revoke(): Boolean {
-        val ok = PhysicalFuse.revoke()
-        RootChecker.forceRefresh()
-        return ok
     }
 
     fun clearEmergency(): Boolean = EmergencyGuard.clearFallback()
