@@ -84,6 +84,8 @@ CPU 频率无 API 主管线，强制走备分管线，60 秒定时重刷，熔�
 # 直接作为 LSPosed 模块安装即可
 ```
 
+版本号格式：`1.0.0build{YYMMDDHHMM}`（如 `1.0.0build2608170442`），构件号按构建时间自动生成，可用 `-PbuildNumber=xxxx` 覆盖。
+
 依赖要求：`de.robv.android.xposed:api:82`（compileOnly）；目标 SDK 35，最低 Android 8.0（API 26）。
 
 ## 日志

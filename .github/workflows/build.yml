@@ -32,12 +32,16 @@ jobs:
       - name: 配置 Gradle（发行版缓存 + 依赖缓存 + build 缓存）
         uses: gradle/actions/setup-gradle@v4
 
+      - name: 生成构件号（日期+时间）
+        run: |
+          echo "BUILD_NUMBER=$(date +%y%m%d%H%M)" >> "$GITHUB_ENV"
+
       - name: 构建 debug APK
-        run: ./gradlew :app:assembleDebug --stacktrace
+        run: ./gradlew :app:assembleDebug -PbuildNumber=${{ env.BUILD_NUMBER }} --stacktrace
 
       - name: 提取版本号
         run: |
-          VERSION=$(./gradlew -q :app:printVersionName | tail -n 1)
+          VERSION=$(./gradlew -q :app:printVersionName -PbuildNumber=${{ env.BUILD_NUMBER }} | tail -n 1)
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
 
       - name: 上传 APK 产物

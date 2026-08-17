@@ -1,5 +1,13 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
+
+fun buildNumber(): String =
+    project.findProperty("buildNumber")?.toString()
+        ?.takeIf { it.isNotBlank() }
+        ?: LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyMMddHHmm"))
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -15,7 +23,7 @@ android {
         minSdk = 26
         targetSdk = 34
         versionCode = 1
-        versionName = "1.0.0"
+        versionName = "1.0.0build" + buildNumber()
     }
 
     buildTypes {

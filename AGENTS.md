@@ -105,7 +105,7 @@ system_server、launcher、SystemUI、电话、输入法。另有硬豁免：电
 
 - 文件：`.github/workflows/build.yml`
 - 触发：push / workflow_dispatch
-- 产物：`app/build/outputs/apk/debug/app-debug.apk`，artifact 命名 `power_manager_v{version}.apk`（版本号由 `:app:printVersionName` 任务输出）
+- 产物：`app/build/outputs/apk/debug/app-debug.apk`，artifact 命名 `power_manager_v{version}.apk`（版本号由 `:app:printVersionName` 任务输出）。versionName 格式 `1.0.0build{YYMMDDHHMM}`，构件号在 workflow 中由 `date +%y%m%d%H%M` 生成一次并 `-PbuildNumber=` 传给 Gradle（避免两次调用跨分钟不一致）
 - 工作流全程仅 debug（assembleDebug + 上传 APK），**无任何发行版/Release 相关步骤**
 - 依赖仓库：Xposed api 走 `https://api.xposed.info/`（jcenter 已死）
 - `gradle.properties`：启用 `org.gradle.caching`，**禁用 `configuration-cache`**（与 AGP 8.7.3 冲突）
@@ -130,3 +130,4 @@ system_server、launcher、SystemUI、电话、输入法。另有硬豁免：电
 | 2026-08-17 | 授权时硬件扫描（CPU 基准）+ 能力测试落盘 caps.json，运行时自动禁用不支持项；实现 maxBg 强制；熔断全局标志覆盖全部 Hook；authorized 状态同步 |
 | 2026-08-17 | 综合修复：manifest 补 xposedminversion=82 metadata（LSPosed 以此识别 legacy 模块，解决模块不在列表）；pmon 信标改 /sdcard/pmon（兼容 /pmon，解决 APatch 根目录只读写失败）；RootChecker 30s TTL+forceRefresh（解决授权后仍报 root 缺失）；AppStore 弃缓存改 copyOf 深拷贝触发重组（解决模板实时刷新）；UI 重设计标准 M3（图标 NavigationBar/TopAppBar/Card/AssistChip）；轮询移 IO + Toast 一次性 + items key（解决滚动卡顿） |
 | 2026-08-17 | 彻底原生化重构：熔断简化仅 /sdcard/pmon + /sdcard/pmoff 两个文件（删除 8 路径冗余与旧 /pmon 兼容）；删除运行模式指示器及 status.json/StatusProvider/ContentProvider 状态链（StatusReporter 仅保留 cpuFreqApplied/btDisabledByModule 供调度使用）；主题改系统默认 darkColorScheme/lightColorScheme 跟随深浅色、去全部自定义颜色；熔断时强制显示「允许模块运行」Banner，缺 Root 仅显示横幅提示 |
+| 2026-08-17 | 构件号自动生成：versionName 改 `1.0.0build{YYMMDDHHMM}`（如 1.0.0build2608170442），构件号由 workflow 用 `date +%y%m%d%H%M` 生成一次并经 `-PbuildNumber=` 传入（build.gradle.kts 支持属性覆盖，无属性时本地默认取当前时间） |
