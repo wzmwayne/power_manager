@@ -117,7 +117,7 @@ system_server、launcher、SystemUI、电话、输入法。另有硬豁免：电
 - 工作流全程仅 debug（assembleDebug + 上传 APK），**无任何发行版/Release 相关步骤**
 - 依赖仓库：Xposed api 走 `https://api.xposed.info/`（jcenter 已死）
 - `gradle.properties`：启用 `org.gradle.caching`，**禁用 `configuration-cache`**（与 AGP 8.7.3 冲突）
-- 构建状态：2026-08-16 修复后 CI 全绿（8 步全通过，约 1m30s）
+- 构建状态：2026-08-16 修复后 CI 全绿（8 步全通过，约 1m30s）；2026-08-17 综合修复后再次 CI 全绿
 
 ## 决策日志
 
