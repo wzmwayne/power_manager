@@ -71,7 +71,7 @@ LSPosed 系统框架电源管理模块（仅作用于 `system_server` 与系统�
 - 硬件扫描与能力自动禁用：授权时 `HardwareProbe.scan` 扫描 CPU 基准（max 频率/核数）并逐项测试能力（CPU 调频/帧率锁/动画/蓝牙/网络/GPS），落盘 `files/caps.json`（666）；运行时各 Hook 与调度按能力自动跳过不支持项，UI 编辑页自动禁用并提示。
 - max_bg 强制：`BackgroundKillHook` 15s 周期枚举后台受限进程（按 importance 排序），超限清理最不重要者。
 - 熔断全局标志：`PhysicalFuse.tripped` 由轮询置位，全部 Hook 回调入口检查后跳过，熔断后模块整体停用而非仅停调度。
-- 授权状态：授权/停用成功后同步 `cfg.authorized` 并在首页展示硬件能力卡片。
+- 授权状态：授权/停用成功后同步 `cfg.authorized`；首页硬件能力卡片的有无与熔断同一机制（App 端轮询 `PhysicalFuse.isTripped`，熔断/停用时隐藏）。
 - 配置共享读取：`MODE_PRIVATE` 落盘 600 权限 system_server 读不到，每次 `save` 必须 `commit()` 同步落盘后经 Root `chmod shared_prefs 777` + `config.xml 666`。
 - 生命周期：应用即刷策略（CPU 即时，其余 Hook 实时读缓存）；删除激活模板回 -3；设置页重置所有模板。
 - 异常关机自动回退 -3：Hook `PowerManagerService` shutdown 写优雅退出标记，缺失且激活非 -3 时回退。
