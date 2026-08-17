@@ -33,7 +33,8 @@ object RootExecutor {
 
     fun writeFile(path: String, content: String): Boolean {
         val parent = File(path).parent ?: "/"
-        return run("mkdir -p $parent; printf '%s' '$content' > $path; chmod 644 $path")
+        val safe = content.replace("'", "'\\''")
+        return run("mkdir -p $parent; printf '%s' '$safe' > $path; chmod 644 $path")
     }
 
     fun removeFile(path: String): Boolean = run("rm -f $path")

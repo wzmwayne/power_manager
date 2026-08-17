@@ -19,6 +19,7 @@ object ModuleScheduler {
     fun start() {
         if (running) return
         running = true
+        HardwareProbe.load()
         thread = HandlerThread("power-manager").also { it.start() }
         handler = Handler(thread!!.looper)
         handler?.postDelayed(tick, 100L)
@@ -54,7 +55,10 @@ object ModuleScheduler {
         val cfg = ConfigProvider.config() ?: return
         val tpl = cfg.templates[cfg.currentTemplateId] ?: return
         try {
-            if (tpl.animOff) StrategyExecutor.disableAnimation() else StrategyExecutor.enableAnimation()
+            val cap = HardwareProbe.caps
+            if (cap == null || cap.animSupported) {
+                if (tpl.animOff) StrategyExecutor.disableAnimation() else StrategyExecutor.enableAnimation()
+            }
             syncBluetooth(tpl)
             syncNetwork(cfg, tpl)
         } catch (e: Throwable) {
@@ -63,6 +67,8 @@ object ModuleScheduler {
     }
 
     private fun syncBluetooth(tpl: Template) {
+        val cap = HardwareProbe.caps
+        if (cap != null && !cap.bluetoothSupported) return
         if (tpl.btPolicy == 0) {
             if (!StatusReporter.btDisabledByModule && ApiExecutor.isBluetoothOn()) {
                 StatusReporter.btDisabledByModule = true
@@ -78,6 +84,11 @@ object ModuleScheduler {
 
     private fun syncNetwork(cfg: AppConfig, tpl: Template) {
         if (tpl.netPolicy != 0) return
+        val cap = HardwareProbe.caps
+        if (cap != null && !cap.networkSupported) {
+            LogUtil.w("后台网络限制不受支持，已自动禁用")
+            return
+        }
         for (pkg in cfg.restrictedPackages()) {
             val uid = packageUid(pkg)
             if (uid > 0) StrategyExecutor.restrictUid(uid, true)
@@ -85,6 +96,12 @@ object ModuleScheduler {
     }
 
     fun applyCpu(tpl: Template) {
+        val cap = HardwareProbe.caps
+        if (cap != null && !cap.cpuFreqSupported) {
+            LogUtil.w("CPU 调频不受支持，已自动禁用")
+            StatusReporter.cpuFreqApplied = -1
+            return
+        }
         val freq = CpuUtil.resolveCpuFreq(tpl)
         val mode = StrategyExecutor.setCpuFreq(freq)
         if (mode == ExecMode.API || mode == ExecMode.ROOT) {

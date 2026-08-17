@@ -38,11 +38,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.power.manager.core.HardwareCap
+import com.power.manager.core.HardwareProbe
 import com.power.manager.data.AppConfig
 import com.power.manager.data.Template
 import com.power.manager.ui.AppStore
 import kotlinx.coroutines.delay
 import org.json.JSONObject
+import java.io.File
 
 @Composable
 fun HomeScreen(padding: PaddingValues, onEdit: (Template) -> Unit) {
@@ -50,6 +53,7 @@ fun HomeScreen(padding: PaddingValues, onEdit: (Template) -> Unit) {
     var cfg by remember { mutableStateOf(AppStore.load()) }
     var rootAvailable by remember { mutableStateOf(AppStore.isRoot()) }
     var statusJson by remember { mutableStateOf(readStatus(context)) }
+    var capsInfo by remember { mutableStateOf(readCaps()) }
     var showAuthDialog by remember { mutableStateOf(false) }
     var showNewDialog by remember { mutableStateOf(false) }
     var toast by remember { mutableStateOf<String?>(null) }
@@ -97,6 +101,7 @@ fun HomeScreen(padding: PaddingValues, onEdit: (Template) -> Unit) {
             }
         }
         StatusIndicator(statusJson)
+        CapabilityCard(capsInfo)
         Text("模板列表", style = MaterialTheme.typography.titleMedium)
         LazyColumn(
             verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -129,10 +134,18 @@ fun HomeScreen(padding: PaddingValues, onEdit: (Template) -> Unit) {
     if (showAuthDialog) {
         AuthDialog(
             onConfirm = {
+                val cap = HardwareProbe.scan(context)
+                capsInfo = readCaps()
                 val ok = AppStore.authorize()
                 rootAvailable = AppStore.isRoot()
                 cfg = AppStore.load()
-                toast = if (ok) "授权成功，请重启手机生效" else "授权失败（需要 Root 权限）"
+                val unsupported = cap.unsupportedList()
+                toast = if (ok) {
+                    val base = "授权成功，已保存硬件基准，重启后生效"
+                    if (unsupported.isEmpty()) base else "$base；不支持：${unsupported.joinToString("、")}"
+                } else {
+                    "授权失败（需要 Root 权限）"
+                }
                 showAuthDialog = false
             },
             onDismiss = { showAuthDialog = false }
@@ -165,6 +178,34 @@ fun StatusIndicator(json: String) {
     ) {
         Box(Modifier.size(10.dp).background(info.color, CircleShape))
         Text(info.text, style = MaterialTheme.typography.bodyMedium)
+    }
+}
+
+@Composable
+fun CapabilityCard(json: String?) {
+    if (json.isNullOrBlank()) return
+    val cap = try {
+        HardwareCap.fromJson(JSONObject(json))
+    } catch (e: Throwable) {
+        return
+    }
+    Column {
+        Text("硬件能力（授权时扫描）", style = MaterialTheme.typography.titleSmall)
+        Text(
+            "CPU 调频：${if (cap.cpuFreqSupported) "支持" else "不支持"} · " +
+                "帧率锁：${if (cap.fpsSupported) "支持" else "不支持"} · " +
+                "动画：${if (cap.animSupported) "支持" else "不支持"} · " +
+                "蓝牙：${if (cap.bluetoothSupported) "支持" else "不支持"} · " +
+                "网络限制：${if (cap.networkSupported) "支持" else "不支持"} · " +
+                "GPS：${if (cap.gpsSupported) "支持" else "不支持"}",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Text(
+            "基准：CPU 上限 ${cap.cpuMaxFreqKHz / 1000}MHz · ${cap.cpuCoreCount} 核",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.outline
+        )
     }
 }
 
@@ -319,6 +360,15 @@ fun readStatus(context: Context): String {
         }
     } catch (e: Throwable) {
         ""
+    }
+}
+
+fun readCaps(): String? {
+    return try {
+        val f = File(HardwareCap.capFile())
+        if (f.exists()) f.readText() else null
+    } catch (e: Throwable) {
+        null
     }
 }
 

@@ -1,6 +1,7 @@
 package com.power.manager.hook
 
 import com.power.manager.core.ConfigProvider
+import com.power.manager.core.PhysicalFuse
 import com.power.manager.util.LogUtil
 import de.robv.android.xposed.XC_MethodHook
 import de.robv.android.xposed.XposedBridge
@@ -14,6 +15,7 @@ object BrightnessHook {
             val cb = object : XC_MethodHook() {
                 override fun beforeHookedMethod(param: MethodHookParam) {
                     try {
+                        if (PhysicalFuse.tripped) return
                         val cap = currentCap() ?: return
                         val v = param.args.getOrNull(0) as? Int ?: return
                         if (v > cap) param.args[0] = cap

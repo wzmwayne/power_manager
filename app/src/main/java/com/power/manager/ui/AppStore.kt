@@ -121,9 +121,26 @@ object AppStore {
         save(cfg)
     }
 
-    fun authorize(): Boolean = PhysicalFuse.authorize()
+    /** 授权：创建 /pmon 授权信标（硬件扫描由调用方执行一次，避免重复）。 */
+    fun authorize(): Boolean {
+        val ok = PhysicalFuse.authorize()
+        if (ok) {
+            val cfg = load()
+            cfg.authorized = true
+            save(cfg)
+        }
+        return ok
+    }
 
-    fun revoke(): Boolean = PhysicalFuse.revoke()
+    fun revoke(): Boolean {
+        val ok = PhysicalFuse.revoke()
+        if (ok) {
+            val cfg = load()
+            cfg.authorized = false
+            save(cfg)
+        }
+        return ok
+    }
 
     fun clearEmergency(): Boolean = EmergencyGuard.clearFallback()
 

@@ -29,6 +29,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.power.manager.core.HardwareProbe
 import com.power.manager.data.CpuUtil
 import com.power.manager.data.Template
 import com.power.manager.ui.AppStore
@@ -37,6 +38,9 @@ import com.power.manager.ui.AppStore
 @Composable
 fun EditScreen(template: Template, onBack: () -> Unit) {
     val context = LocalContext.current
+    val caps = remember { HardwareProbe.load() }
+    val cpuOk = caps?.cpuFreqSupported ?: true
+    val fpsOk = caps?.fpsSupported ?: true
     val editable = !template.isBuiltin
     var name by remember { mutableStateOf(template.name) }
     var maxBg by remember { mutableStateOf(if (template.maxBg >= 0) template.maxBg.toString() else "") }
@@ -76,8 +80,14 @@ fun EditScreen(template: Template, onBack: () -> Unit) {
             )
             LabeledField("后台进程上限（-1 不限）", maxBg, { maxBg = it }, editable, listOf("1", "3", "5", "10"))
             LabeledField("清理倒计时秒（0 即杀）", killDelay, { killDelay = it }, editable, listOf("0", "30", "120", "300"))
-            LabeledField("锁定帧率 Hz（空不限）", fps, { fps = it }, editable, listOf("30", "60", "90", "120"))
-            LabeledField("CPU 频率（小数或 KHz，空不限）", cpu, { cpu = it }, editable, listOf("0.4", "0.7", "0.9", "1.0"))
+            LabeledField("锁定帧率 Hz（空不限）", fps, { fps = it }, editable && fpsOk, listOf("30", "60", "90", "120"))
+            if (!fpsOk) {
+                Text("设备不支持帧率锁，已自动禁用", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
+            }
+            LabeledField("CPU 频率（小数或 KHz，空不限）", cpu, { cpu = it }, editable && cpuOk, listOf("0.4", "0.7", "0.9", "1.0"))
+            if (!cpuOk) {
+                Text("设备不支持 CPU 调频，已自动禁用", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
+            }
             LabeledField("亮度上限 0-255（空不限）", brightness, { brightness = it }, editable, listOf("10", "30", "80", "255"))
 
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
@@ -117,7 +127,11 @@ fun EditScreen(template: Template, onBack: () -> Unit) {
                             -1
                         } else {
                             val d = cpuTxt.toDoubleOrNull()
-                            if (d == null) -1 else CpuUtil.convertToKHz(d)
+                            if (d == null) {
+                                toast = "CPU 频率格式无效，请输入小数（如 0.7）或 KHz 数值"
+                                return@Button
+                            }
+                            CpuUtil.convertToKHz(d)
                         }
                         if (cpuTxt.isNotEmpty() && cf == -1 && (cpuTxt.toDoubleOrNull() ?: 0.0) > 0) {
                             toast = "CPU 频率低于 20% 安全线，已自动转为不限"

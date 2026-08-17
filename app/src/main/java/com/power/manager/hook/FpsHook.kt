@@ -1,6 +1,8 @@
 package com.power.manager.hook
 
 import com.power.manager.core.ConfigProvider
+import com.power.manager.core.HardwareProbe
+import com.power.manager.core.PhysicalFuse
 import com.power.manager.core.StrategyExecutor
 import com.power.manager.util.LogUtil
 
@@ -10,6 +12,9 @@ object FpsHook {
 
     fun onForegroundChanged(pkg: String) {
         try {
+            if (PhysicalFuse.tripped) return
+            val cap = HardwareProbe.caps
+            if (cap != null && !cap.fpsSupported) return
             val cfg = ConfigProvider.config() ?: return
             val tpl = cfg.templates[cfg.currentTemplateId] ?: return
             val fps = tpl.targetFps

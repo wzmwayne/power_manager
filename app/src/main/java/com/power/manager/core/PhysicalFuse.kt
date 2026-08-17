@@ -15,13 +15,23 @@ object PhysicalFuse {
     )
     private const val PMON = "/pmon"
 
+    @Volatile
+    var tripped: Boolean = false
+        private set
+
     fun isTripped(): Boolean {
-        return try {
-            if (!File(PMON).exists() || !File(PMON).canRead()) return true
-            pmoffPaths.any { File(it).exists() }
+        val r = try {
+            if (!File(PMON).exists() || !File(PMON).canRead()) true
+            else pmoffPaths.any { File(it).exists() }
         } catch (e: Throwable) {
             true
         }
+        if (r) tripped = true
+        return r
+    }
+
+    fun resetTripped() {
+        tripped = false
     }
 
     fun authorize(): Boolean {

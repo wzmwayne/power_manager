@@ -1,9 +1,12 @@
 package com.power.manager.hook
 
+import android.app.ActivityManager
+import android.content.Context
 import android.os.Handler
 import android.os.HandlerThread
 import com.power.manager.core.ApiExecutor
 import com.power.manager.core.ConfigProvider
+import com.power.manager.core.PhysicalFuse
 import com.power.manager.core.Protection
 import com.power.manager.core.StrategyExecutor
 import com.power.manager.util.LogUtil
@@ -13,10 +16,12 @@ import de.robv.android.xposed.XposedHelpers
 import de.robv.android.xposed.callbacks.XC_LoadPackage
 
 object BackgroundKillHook {
+    private const val ENFORCE_INTERVAL_MS = 15_000L
     private val thread = HandlerThread("kill-worker").apply { start() }
     private val handler = Handler(thread.looper)
     @Volatile
     private var lastForeground: String? = null
+    private var enforceRunning = false
 
     fun hook(lpparam: XC_LoadPackage.LoadPackageParam) {
         try {
@@ -27,6 +32,7 @@ object BackgroundKillHook {
                 object : XC_MethodHook() {
                     override fun afterHookedMethod(param: MethodHookParam) {
                         try {
+                            if (PhysicalFuse.tripped) return
                             val pkg = extractPackageName(param) ?: return
                             CurrentApp.foreground = pkg
                             FpsHook.onForegroundChanged(pkg)
@@ -41,8 +47,53 @@ object BackgroundKillHook {
                     }
                 }
             )
+            startEnforceLoop()
         } catch (e: Throwable) {
             LogUtil.e(e, "BackgroundKillHook 注册失败")
+        }
+    }
+
+    private fun startEnforceLoop() {
+        if (enforceRunning) return
+        enforceRunning = true
+        handler.postDelayed(enforceLoop, ENFORCE_INTERVAL_MS)
+    }
+
+    private val enforceLoop = object : Runnable {
+        override fun run() {
+            try {
+                enforceMaxBg()
+            } catch (e: Throwable) {
+                LogUtil.e(e, "maxBg 检查异常")
+            }
+            handler.postDelayed(this, ENFORCE_INTERVAL_MS)
+        }
+    }
+
+    /** max_bg：后台受限进程数超限时，清理最久未用的进程。 */
+    private fun enforceMaxBg() {
+        if (PhysicalFuse.tripped) return
+        val cfg = ConfigProvider.config() ?: return
+        val tpl = cfg.templates[cfg.currentTemplateId] ?: return
+        if (tpl.maxBg < 0) return
+        val ctx = ApiExecutor.systemContext() ?: return
+        val am = ctx.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager ?: return
+        val procs = am.runningAppProcesses ?: return
+        val candidates = mutableListOf<Pair<String, Long>>()
+        for (p in procs) {
+            if (p.importance <= ActivityManager.RunningAppProcessInfo.IMPORTANCE_VISIBLE) continue
+            val pkg = p.pkgList.firstOrNull { it.isNotBlank() && cfg.isRestricted(it) && !Protection.isProtected(it) }
+                ?: continue
+            if (pkg == CurrentApp.foreground) continue
+            candidates += pkg to p.lastUsedTime
+        }
+        if (candidates.size <= tpl.maxBg) return
+        val sorted = candidates.sortedBy { it.second }
+        val overflow = candidates.size - tpl.maxBg
+        for (i in 0 until overflow) {
+            val pkg = sorted[i].first
+            LogUtil.i("后台受限进程超限（上限 ${tpl.maxBg}），清理最久未用：$pkg")
+            StrategyExecutor.forceStop(pkg)
         }
     }
 
@@ -67,6 +118,7 @@ object BackgroundKillHook {
     private fun scheduleKill(pkg: String) {
         handler.post {
             try {
+                if (PhysicalFuse.tripped) return@post
                 val cfg = ConfigProvider.config() ?: return@post
                 val tpl = cfg.templates[cfg.currentTemplateId] ?: return@post
                 if (!cfg.isRestricted(pkg)) return@post
@@ -91,6 +143,7 @@ object BackgroundKillHook {
 
     private fun tryKill(pkg: String) {
         try {
+            if (PhysicalFuse.tripped) return
             val cfg = ConfigProvider.config() ?: return
             val tpl = cfg.templates[cfg.currentTemplateId] ?: return
             if (!cfg.isRestricted(pkg)) return

@@ -1,6 +1,8 @@
 package com.power.manager.hook
 
 import com.power.manager.core.ConfigProvider
+import com.power.manager.core.HardwareProbe
+import com.power.manager.core.PhysicalFuse
 import com.power.manager.util.LogUtil
 import de.robv.android.xposed.XC_MethodHook
 import de.robv.android.xposed.XposedBridge
@@ -17,6 +19,9 @@ object AnimationHook {
                 object : XC_MethodHook() {
                     override fun beforeHookedMethod(param: MethodHookParam) {
                         try {
+                            if (PhysicalFuse.tripped) return
+                            val cap = HardwareProbe.caps
+                            if (cap != null && !cap.animSupported) return
                             val cfg = ConfigProvider.config() ?: return
                             val tpl = cfg.templates[cfg.currentTemplateId] ?: return
                             if (!tpl.animOff) return
