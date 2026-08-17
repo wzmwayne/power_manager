@@ -17,16 +17,26 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ElevatedCard
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -44,93 +54,125 @@ import com.power.manager.core.PhysicalFuse
 import com.power.manager.data.AppConfig
 import com.power.manager.data.Template
 import com.power.manager.ui.AppStore
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.File
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(padding: PaddingValues, onEdit: (Template) -> Unit) {
     val context = LocalContext.current
     var cfg by remember { mutableStateOf(AppStore.load()) }
     var rootAvailable by remember { mutableStateOf(AppStore.isRoot()) }
-    var statusJson by remember { mutableStateOf(readStatus(context)) }
+    var statusJson by remember { mutableStateOf("") }
     var capsInfo by remember { mutableStateOf(readCaps()) }
-    var fuseTripped by remember { mutableStateOf(PhysicalFuse.isTripped()) }
+    var fuseTripped by remember { mutableStateOf(true) }
     var showAuthDialog by remember { mutableStateOf(false) }
     var showNewDialog by remember { mutableStateOf(false) }
     var toast by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) {
         while (true) {
-            statusJson = readStatus(context)
-            fuseTripped = PhysicalFuse.isTripped()
+            statusJson = withContext(Dispatchers.IO) { readStatus(context) }
+            fuseTripped = withContext(Dispatchers.IO) { PhysicalFuse.isTripped() }
+            rootAvailable = withContext(Dispatchers.IO) { AppStore.isRoot() }
             delay(3000)
         }
     }
 
-    Column(
-        modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        if (!cfg.authorized) {
-            ElevatedCard(Modifier.fillMaxWidth()) {
-                Column(
-                    Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text("模块尚未授权", style = MaterialTheme.typography.titleMedium)
-                    Text(
-                        "点击「允许模块运行」完成首次授权。需要 Root 权限，将创建 /pmon 授权信标并清除所有 pmoff 禁用文件，重启后生效。",
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                    Button(onClick = { showAuthDialog = true }, modifier = Modifier.align(Alignment.End)) {
-                        Text("允许模块运行")
-                    }
-                }
-            }
+    LaunchedEffect(toast) {
+        toast?.let {
+            Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
+            toast = null
         }
-        if (!rootAvailable) {
-            ElevatedCard(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
-            ) {
-                Column(Modifier.padding(16.dp)) {
-                    Text("未检测到 Root 权限", style = MaterialTheme.typography.titleMedium)
-                    Text(
-                        "CPU 调频与部分保底功能将不可用，模块仍可运行（API 模式）。应用模板时 CPU 限制项将被自动转为不限。",
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
-            }
-        }
-        StatusIndicator(statusJson)
-        if (!fuseTripped) CapabilityCard(capsInfo)
-        Text("模板列表", style = MaterialTheme.typography.titleMedium)
-        LazyColumn(
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.weight(1f)
+    }
+
+    Scaffold(
+        topBar = { TopAppBar(title = { Text("电源管理") }) }
+    ) { inner ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(inner)
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            val sorted = cfg.templates.values.sortedBy { it.id }
-            items(sorted) { tpl ->
-                TemplateCard(
-                    tpl = tpl,
-                    active = tpl.id == cfg.currentTemplateId,
-                    onApply = {
-                        AppStore.applyTemplate(cfg, tpl)
-                        cfg = AppStore.load()
-                        toast = "已应用模板：${tpl.name}"
-                    },
-                    onEdit = { onEdit(tpl) },
-                    onDelete = {
-                        AppStore.deleteTemplate(cfg, tpl)
-                        cfg = AppStore.load()
-                        toast = "已删除模板：${tpl.name}"
+            if (!cfg.authorized) {
+                ElevatedCard(Modifier.fillMaxWidth()) {
+                    Column(
+                        Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Filled.Info,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                "模块尚未授权",
+                                style = MaterialTheme.typography.titleMedium,
+                                modifier = Modifier.padding(start = 8.dp)
+                            )
+                        }
+                        Text(
+                            "点击「允许模块运行」完成首次授权。需要 Root 权限，将创建 /sdcard/pmon 授权信标并清除所有 pmoff 禁用文件，重启后生效。",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        Button(onClick = { showAuthDialog = true }, modifier = Modifier.align(Alignment.End)) {
+                            Text("允许模块运行")
+                        }
                     }
-                )
+                }
             }
-        }
-        Button(onClick = { showNewDialog = true }, modifier = Modifier.fillMaxWidth()) {
-            Text("新建模板")
+            if (!rootAvailable) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+                ) {
+                    Column(Modifier.padding(16.dp)) {
+                        Text("未检测到 Root 权限", style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            "CPU 调频与部分保底功能将不可用，模块仍可运行（API 模式）。应用模板时 CPU 限制项将被自动转为不限。",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                }
+            }
+            StatusIndicator(statusJson)
+            if (!fuseTripped) CapabilityCard(capsInfo)
+            Text("模板列表", style = MaterialTheme.typography.titleMedium)
+            val sorted = remember(cfg) { cfg.templates.values.sortedBy { it.id } }
+            LazyColumn(
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.weight(1f)
+            ) {
+                items(sorted, key = { it.id }) { tpl ->
+                    TemplateCard(
+                        tpl = tpl,
+                        active = tpl.id == cfg.currentTemplateId,
+                        onApply = {
+                            val next = AppStore.copyOf(cfg)
+                            AppStore.applyTemplate(next, tpl)
+                            cfg = next
+                            toast = "已应用模板：${tpl.name}"
+                        },
+                        onEdit = { onEdit(tpl) },
+                        onDelete = {
+                            val next = AppStore.copyOf(cfg)
+                            AppStore.deleteTemplate(next, tpl)
+                            cfg = next
+                            toast = "已删除模板：${tpl.name}"
+                        }
+                    )
+                }
+            }
+            Button(onClick = { showNewDialog = true }, modifier = Modifier.fillMaxWidth()) {
+                Text("新建模板")
+            }
         }
     }
 
@@ -141,7 +183,9 @@ fun HomeScreen(padding: PaddingValues, onEdit: (Template) -> Unit) {
                 capsInfo = readCaps()
                 val ok = AppStore.authorize()
                 rootAvailable = AppStore.isRoot()
-                cfg = AppStore.load()
+                val next = AppStore.copyOf(cfg)
+                next.authorized = ok || next.authorized
+                cfg = next
                 val unsupported = cap.unsupportedList()
                 toast = if (ok) {
                     val base = "授权成功，已保存硬件基准，重启后生效"
@@ -158,29 +202,34 @@ fun HomeScreen(padding: PaddingValues, onEdit: (Template) -> Unit) {
         NewTemplateDialog(
             cfg = cfg,
             onPick = { source, name ->
-                val t = AppStore.createTemplate(cfg, source, name)
-                cfg.templates[t.id] = t
-                AppStore.save(cfg)
+                val next = AppStore.copyOf(cfg)
+                val t = AppStore.createTemplate(next, source, name)
+                next.templates[t.id] = t
+                AppStore.save(next)
+                cfg = next
                 onEdit(t)
                 showNewDialog = false
             },
             onDismiss = { showNewDialog = false }
         )
     }
-    toast?.let {
-        Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
-    }
 }
 
 @Composable
 fun StatusIndicator(json: String) {
     val info = parseStatus(json) ?: return
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        Box(Modifier.size(10.dp).background(info.color, CircleShape))
-        Text(info.text, style = MaterialTheme.typography.bodyMedium)
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+        ) {
+            Box(
+                Modifier
+                    .size(10.dp)
+                    .background(info.color, CircleShape)
+            )
+            Text(info.text, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(start = 8.dp))
+        }
     }
 }
 
@@ -192,23 +241,21 @@ fun CapabilityCard(json: String?) {
     } catch (e: Throwable) {
         return
     }
-    Column {
-        Text("硬件能力（授权时扫描）", style = MaterialTheme.typography.titleSmall)
-        Text(
-            "CPU 调频：${if (cap.cpuFreqSupported) "支持" else "不支持"} · " +
-                "帧率锁：${if (cap.fpsSupported) "支持" else "不支持"} · " +
-                "动画：${if (cap.animSupported) "支持" else "不支持"} · " +
-                "蓝牙：${if (cap.bluetoothSupported) "支持" else "不支持"} · " +
-                "网络限制：${if (cap.networkSupported) "支持" else "不支持"} · " +
-                "GPS：${if (cap.gpsSupported) "支持" else "不支持"}",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Text(
-            "基准：CPU 上限 ${cap.cpuMaxFreqKHz / 1000}MHz · ${cap.cpuCoreCount} 核",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.outline
-        )
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("硬件能力（授权时扫描）", style = MaterialTheme.typography.titleSmall)
+            AssistChip(onClick = {}, label = { Text("CPU 调频：${if (cap.cpuFreqSupported) "支持" else "不支持"}") })
+            AssistChip(onClick = {}, label = { Text("帧率锁：${if (cap.fpsSupported) "支持" else "不支持"}") })
+            AssistChip(onClick = {}, label = { Text("动画：${if (cap.animSupported) "支持" else "不支持"}") })
+            AssistChip(onClick = {}, label = { Text("蓝牙：${if (cap.bluetoothSupported) "支持" else "不支持"}") })
+            AssistChip(onClick = {}, label = { Text("网络限制：${if (cap.networkSupported) "支持" else "不支持"}") })
+            AssistChip(onClick = {}, label = { Text("GPS：${if (cap.gpsSupported) "支持" else "不支持"}") })
+            Text(
+                "基准：CPU 上限 ${cap.cpuMaxFreqKHz / 1000}MHz · ${cap.cpuCoreCount} 核",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.outline
+            )
+        }
     }
 }
 
@@ -249,13 +296,19 @@ fun TemplateCard(
             )
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Button(onClick = onApply) { Text("应用") }
-                if (!tpl.isBuiltin) {
-                    OutlinedButton(onClick = onEdit) { Text("编辑") }
-                    OutlinedButton(onClick = onDelete) { Text("删除") }
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    if (!tpl.isBuiltin) {
+                        IconButton(onClick = onEdit) {
+                            Icon(Icons.Filled.Edit, contentDescription = "编辑")
+                        }
+                        IconButton(onClick = onDelete) {
+                            Icon(Icons.Filled.Delete, contentDescription = "删除")
+                        }
+                    }
                 }
             }
         }
@@ -279,7 +332,7 @@ fun AuthDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
                 if (count > 0)
                     "请阅读风险提示：本模块会强制限制系统资源，极端策略可能造成卡顿或异常。倒计时 $count 秒后可确认。"
                 else
-                    "即将创建 /pmon 授权信标并清除所有 pmoff 禁用文件。确认后请重启手机，模块正式注入生效。"
+                    "即将创建 /sdcard/pmon 授权信标并清除所有 pmoff 禁用文件。确认后请重启手机，模块正式注入生效。"
             )
         },
         confirmButton = {

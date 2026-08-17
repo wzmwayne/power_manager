@@ -13,7 +13,8 @@ object PhysicalFuse {
         "/system/pmoff",
         "/pmoff"
     )
-    private const val PMON = "/pmon"
+    private const val PMON = "/sdcard/pmon"
+    private const val PMON_LEGACY = "/pmon"
 
     @Volatile
     var tripped: Boolean = false
@@ -21,7 +22,9 @@ object PhysicalFuse {
 
     fun isTripped(): Boolean {
         val r = try {
-            if (!File(PMON).exists() || !File(PMON).canRead()) true
+            val pmonOk = File(PMON).exists() && File(PMON).canRead() ||
+                File(PMON_LEGACY).exists() && File(PMON_LEGACY).canRead()
+            if (!pmonOk) true
             else pmoffPaths.any { File(it).exists() }
         } catch (e: Throwable) {
             true

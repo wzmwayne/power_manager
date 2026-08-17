@@ -9,18 +9,22 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -54,11 +58,22 @@ fun EditScreen(template: Template, onBack: () -> Unit) {
     var bt by remember { mutableStateOf(template.btPolicy) }
     var toast by remember { mutableStateOf<String?>(null) }
 
+    LaunchedEffect(toast) {
+        toast?.let {
+            Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
+            toast = null
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text(if (template.isBuiltin) "查看模板" else "编辑模板") },
-                navigationIcon = { TextButton(onClick = onBack) { Text("返回") } }
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.Filled.ArrowBack, contentDescription = "返回")
+                    }
+                }
             )
         }
     ) { padding ->
@@ -156,9 +171,6 @@ fun EditScreen(template: Template, onBack: () -> Unit) {
                 }
             }
         }
-    }
-    toast?.let {
-        Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
     }
 }
 

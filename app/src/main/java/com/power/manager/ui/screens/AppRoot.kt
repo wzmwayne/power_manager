@@ -1,5 +1,10 @@
 package com.power.manager.ui.screens
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
@@ -31,14 +36,20 @@ fun AppRoot() {
                         NavigationBarItem(
                             selected = tab == Tab.HOME,
                             onClick = { tab = Tab.HOME },
-                            icon = { Text("首") },
+                            icon = { Icon(Icons.Filled.Home, contentDescription = null) },
                             label = { Text("首页") }
                         )
                         NavigationBarItem(
                             selected = tab == Tab.SETTINGS,
                             onClick = { tab = Tab.SETTINGS },
-                            icon = { Text("设") },
+                            icon = { Icon(Icons.Filled.Settings, contentDescription = null) },
                             label = { Text("设置") }
+                        )
+                        NavigationBarItem(
+                            selected = tab == Tab.LOG,
+                            onClick = { tab = Tab.LOG },
+                            icon = { Icon(Icons.Filled.Info, contentDescription = null) },
+                            label = { Text("日志") }
                         )
                     }
                 }

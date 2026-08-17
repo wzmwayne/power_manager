@@ -49,9 +49,10 @@ LSPosed 系统框架电源管理模块（仅作用于 `system_server` 与系统�
 /cache/pmoff
 /system/pmoff
 /pmoff
-/pmon   # 授权信标：不存在或不可读 → 熔断（未授权）
+/sdcard/pmon  # 授权信标（主）：不存在或不可读 → 熔断（未授权）
+/pmon        # 授权信标（兼容旧版，已授权用户不熔断）
 ```
-- 首次授权：App 内「允许模块运行」→ 3 秒倒计时确认 → 创建 `/pmon` + 删除所有目录 `pmoff` → 重启生效。
+- 首次授权：App 内「允许模块运行」→ 3 秒倒计时确认 → 创建 `/sdcard/pmon`（兼容旧 `/pmon`）+ 删除所有目录 `pmoff` → 重启生效。信标路径在 `/sdcard`（SAR/EROFS 设备根目录只读，APatch 报 "read-only"）。
 - **熔断触发时：立即 su 写回 `cpuinfo_max_freq` 强制恢复 CPU。**
 
 ### 双模执行器（StrategyExecutor）
@@ -93,6 +94,17 @@ android
 com.android.providers.settings
 com.android.phone
 ```
+- LSPosed 识别 legacy 模块：`AndroidManifest.xml` 必须带 `xposedminversion` metadata（LSPosed 以它判定模块，`assets/xposed_init` 仅作入口）。当前清单含 `xposedmodule/xposeddescription/xposedminversion=82/xposedscope`（scope 用 legacy 命名，管理器按旧版规则展示）。
+
+### Root 检测（RootChecker）
+- 检测结果带 30s TTL 自动重查，不再首次结果永久缓存；`forceRefresh()` 供授权成功后立即刷新，避免「已授予 root 仍显示缺失」。
+- 注意：APatch/KernelSU 按应用白名单授权，system_server 进程内 `su` 可能被拒，状态如实反映该进程实际能力。
+
+### UI（Compose + Material 3）
+- 标准 M3 组件与图标（material-icons-core 内置 Home/Settings/Info/Delete/Edit/ArrowBack/Refresh），NavigationBar 用图标+标签，各页统一 TopAppBar。
+- 状态/能力/模板卡全部改用 Card/AssistChip/ListItem 标准组件；固定深色主题，`darkColorScheme` 提供完整 surfaceContainer 层级配色。
+- 性能：状态轮询（3s）全部在 `Dispatchers.IO` 执行，绝不占主线程；Toast 用 `LaunchedEffect` 一次性显示并置空；`LazyColumn` items 带 key 且列表用 `remember(cfg)` 缓存。
+- 实时刷新：`AppStore.load()` 每次返回全新实例（弃用对象缓存），写操作一律「`copyOf` 深拷贝 → 改副本 → `save` → 整体替换 state」，杜绝就地改状态对象导致 Compose 不重组。
 
 ### 保护白名单（杀后台永不触碰，核心系统）
 system_server、launcher、SystemUI、电话、输入法。另有硬豁免：电话、输入法、系统 UI。
@@ -124,3 +136,4 @@ system_server、launcher、SystemUI、电话、输入法。另有硬豁免：电
 | 2026-08-17 | CPU 双审查：切换模板全量审查并自动将 -2 哨兵解析为真实 KHz；写入内核前兜底 sanitize，防 CPU 挂起 |
 | 2026-08-17 | 配置共享读取：save 后 commit+su chmod shared_prefs 777/config.xml 666，供 system_server 读取 |
 | 2026-08-17 | 授权时硬件扫描（CPU 基准）+ 能力测试落盘 caps.json，运行时自动禁用不支持项；实现 maxBg 强制；熔断全局标志覆盖全部 Hook；authorized 状态同步 |
+| 2026-08-17 | 综合修复：manifest 补 xposedminversion=82 metadata（LSPosed 以此识别 legacy 模块，解决模块不在列表）；pmon 信标改 /sdcard/pmon（兼容 /pmon，解决 APatch 根目录只读写失败）；RootChecker 30s TTL+forceRefresh（解决授权后仍报 root 缺失）；AppStore 弃缓存改 copyOf 深拷贝触发重组（解决模板实时刷新）；UI 重设计标准 M3（图标 NavigationBar/TopAppBar/Card/AssistChip）；轮询移 IO + Toast 一次性 + items key（解决滚动卡顿） |

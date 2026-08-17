@@ -8,6 +8,19 @@
         android:allowBackup="true"
         android:supportsRtl="true">
 
+        <meta-data
+            android:name="xposedmodule"
+            android:value="true" />
+        <meta-data
+            android:name="xposeddescription"
+            android:value="系统框架电源管理模块（仅 system_server 生效）" />
+        <meta-data
+            android:name="xposedminversion"
+            android:value="82" />
+        <meta-data
+            android:name="xposedscope"
+            android:value="android;com.android.providers.settings;com.android.phone" />
+
         <activity
             android:name=".ui.MainActivity"
             android:exported="true"

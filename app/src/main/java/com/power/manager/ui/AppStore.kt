@@ -16,27 +16,30 @@ object AppStore {
     private const val KEY = "config"
     private lateinit var prefs: SharedPreferences
     private var prefsDir: File? = null
-    private var cached: AppConfig? = null
 
     fun init(ctx: Context) {
         prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         prefsDir = File(ctx.applicationInfo.dataDir, "shared_prefs")
-        cached = null
     }
 
+    /** 每次都解析全新实例，保证调用方持有独立对象，写操作后可整体替换触发重组。 */
     fun load(): AppConfig {
-        cached?.let { return it }
         val raw = prefs.getString(KEY, null)
-        val cfg = raw?.let { AppConfig.fromJson(it) } ?: AppConfig.default()
-        cached = cfg
-        return cfg
+        return raw?.let { AppConfig.fromJson(it) } ?: AppConfig.default()
     }
 
     fun save(cfg: AppConfig) {
         prefs.edit().putString(KEY, cfg.toJson()).commit()
-        cached = cfg
         makeSharedReadable()
     }
+
+    /** 深拷贝：可变容器全部换新实例，避免就地修改状态对象导致 Compose 不重组。 */
+    fun copyOf(cfg: AppConfig): AppConfig = cfg.copy(
+        templates = HashMap(cfg.templates),
+        whitelist = HashSet(cfg.whitelist),
+        blacklist = HashSet(cfg.blacklist),
+        overrides = HashMap(cfg.overrides)
+    )
 
     /** MODE_PRIVATE 落盘权限为 600，system_server 无法读取。必须每次保存后经 Root 开放目录与文件读取，否则模块读不到配置。 */
     private fun makeSharedReadable() {
@@ -121,9 +124,10 @@ object AppStore {
         save(cfg)
     }
 
-    /** 授权：创建 /pmon 授权信标（硬件扫描由调用方执行一次，避免重复）。 */
+    /** 授权：创建 /sdcard/pmon 授权信标（硬件扫描由调用方执行一次，避免重复）。 */
     fun authorize(): Boolean {
         val ok = PhysicalFuse.authorize()
+        RootChecker.forceRefresh()
         if (ok) {
             val cfg = load()
             cfg.authorized = true
