@@ -11,8 +11,8 @@ import com.power.manager.core.AppLog
 import com.power.manager.core.ConfigChannel
 import com.power.manager.core.Protection
 import de.robv.android.xposed.XC_MethodHook
-import de.robv.android.xposed.XC_LoadPackage
 import de.robv.android.xposed.XposedBridge
+import de.robv.android.xposed.callbacks.XC_LoadPackage
 
 /**
  * 应用进程内策略执行器（注入每个用户应用，不依赖 root）：
