@@ -129,7 +129,7 @@
 - 工作流全程仅 debug（assembleDebug + 上传 APK），无任何发行版/Release 步骤。
 - 依赖仓库：Xposed api 走 `https://api.xposed.info/`（jcenter 已死）。
 - `gradle.properties`：启用 `org.gradle.caching` 与 `org.gradle.parallel`；**勿启用 `configuration-cache`**（与 AGP 8.7.3 冲突）。
-- 构建状态：历史记录 CI 全绿；配置互通重构落地（dd31ea8 + 0105756）CI 通过（run 32035384091）；应用进程策略方向（51e696b + b994c58 修复 import）CI 通过（run 32039579402），含 assembleDebug 与 APK 上传。
+- 构建状态：历史记录 CI 全绿；配置互通重构落地（dd31ea8 + 0105756）CI 通过（run 32035384091）；应用进程策略方向（51e696b + b994c58）CI 通过（run 32039579402）；后台清理系统层全托管（bd3f4d8 + 5e3571b 修复）CI 通过（run 32116998290），含 assembleDebug 与 APK 上传。
 
 ## 决策日志
 
@@ -152,4 +152,4 @@
 | 2026-08-17 | **配置互通原生化重构（未提交，中间态）**：删整个 hook/执行器/Root 层与 CpuUtil/LogUtil/全部 hook；新增 ContentProvider 配置/日志通道（AppConfigProvider + ConfigChannel 3s TTL + AppLog 统一日志 + SysContext 任意进程取 Context）；数据模型删名单改「规则缺省即受管」、Template 删 maxBg/cpuFreq 改 cpuThrottle 三档 |
 | 2026-08-17 | **配置互通重构落地（CI 验证通过）**：新增 AppLogStore 统一落盘；manifest 注册 AppConfigProvider；模块入口精简为作用域白名单+日志；AppStore 删除 Root/chmod/CPU/名单旧逻辑；Settings/Home/Edit/Log 全 UI 适配新模型；删除名单模式、异常关机回退、硬件能力扫描与 Root 横幅 UI；提交后 CI 全绿 |
 | 2026-08-17 | **目标是 LSPosed 框架（应用进程策略执行方向，CI 验证通过）**：不依赖 root、少依赖系统层；策略下沉到每个用户应用进程（AppPolicyHook：后台跟踪/自杀/冻结/WakeLock 拒绝/亮度钳制/帧率锁/禁动画/GPS 限制/蓝牙开启拦截）；后台清理改为应用进程自杀（killDelay 到点自杀，切回冷启动，等同删后台），废弃系统层 force-stop；system_server 仅保留蓝牙最小系统层能力；推荐作用域改为全部应用；CI 全绿（run 32039579402） |
-| 2026-08-17 | **后台清理系统层全托管（未提交，待 CI）**：新增 BackgroundKeeper（system_server 检测前台切换/队列/超限处决最早/超时计时，事件驱动无轮询）；AppConfig 新增 maxBg 上限与设置页编辑；处决经 ContentProvider insert /bg 下发，目标应用进程 /bg 观察者收到后自杀（Process.killProcess）；蓝牙改触发式（/config 观察者立即关闭 + 3s 复查 + 拦截永久锁定），删除 30s 轮询 SystemScheduler；通讯日志标注 Binder 来源；日志来源标注 AppLog.setProcess(包名) |
+| 2026-08-17 | **后台清理系统层全托管（CI 验证通过）**：新增 BackgroundKeeper（system_server 检测前台切换/队列/超限处决最早/超时计时，事件驱动无轮询）；AppConfig 新增 maxBg 上限与设置页编辑；处决经 ContentProvider insert /bg 下发，目标应用进程 /bg 观察者收到后自杀（Process.killProcess）；蓝牙改触发式（/config 观察者立即关闭 + 3s 复查 + 拦截永久锁定），删除 30s 轮询 SystemScheduler；通讯日志标注 Binder 来源；日志来源标注 AppLog.setProcess(包名)；CI 全绿（run 32116998290） |
