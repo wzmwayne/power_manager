@@ -15,8 +15,8 @@ import com.power.manager.core.Const
 import com.power.manager.core.Protection
 import com.power.manager.core.SysContext
 import de.robv.android.xposed.XC_MethodHook
-import de.robv.android.xposed.XC_LoadPackage
 import de.robv.android.xposed.XposedBridge
+import de.robv.android.xposed.callbacks.XC_LoadPackage
 
 /**
  * 应用进程内策略执行器（注入每个用户应用，目标 LSPosed 框架，不依赖 root）：

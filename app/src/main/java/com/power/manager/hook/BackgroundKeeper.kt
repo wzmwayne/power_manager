@@ -9,7 +9,6 @@ import com.power.manager.core.Protection
 import com.power.manager.core.SysContext
 import de.robv.android.xposed.XC_MethodHook
 import de.robv.android.xposed.XposedBridge
-import de.robv.android.xposed.XposedHelpers
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledFuture
@@ -176,15 +175,25 @@ object BackgroundKeeper {
     private fun pkgOf(record: Any?): String? {
         if (record == null) return null
         return try {
-            XposedHelpers.getStringField(record, "packageName")
+            reflectString(record, "packageName")
         } catch (e: Throwable) {
             try {
-                val ai = XposedHelpers.getObjectField(record, "activityInfo")
-                XposedHelpers.getStringField(ai, "packageName")
+                val ai = reflectField(record, "activityInfo")
+                if (ai != null) reflectString(ai, "packageName") else null
             } catch (e2: Throwable) {
                 AppLog.d("ActivityRecord 包名解析失败")
                 null
             }
         }
+    }
+
+    private fun reflectField(obj: Any, name: String): Any? {
+        val f = obj.javaClass.getDeclaredField(name)
+        f.isAccessible = true
+        return f.get(obj)
+    }
+
+    private fun reflectString(obj: Any, name: String): String {
+        return reflectField(obj, name) as String
     }
 }
