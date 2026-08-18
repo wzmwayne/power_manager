@@ -46,7 +46,7 @@
 - `core/SysContext.kt`：任意进程经 `ActivityThread.getSystemContext` 取 Context/ContentResolver（缓存）。
 - `core/ConfigChannel.kt`：system_server 等进程经 ContentProvider query 读配置，3s TTL 缓存。
 - `core/AppLog.kt`：统一日志（logcat `PowerManager` + `XposedBridge.log` + 经 ContentProvider insert 推送到 App 落盘）。
-- `ui/AppConfigProvider.kt`：ContentProvider——`query /config` 返回配置 JSON，`insert /log` 接收各进程日志行。
+- `ui/AppConfigProvider.kt`：ContentProvider——`query /config` 返回配置 JSON；`insert /log` 接收各进程日志行；`query /bg`（check）与 `insert /bg`（kill 处决命令）后台指令通道（Binder 来源标注）。
 - `ui/AppLogStore.kt`：App 侧统一日志落盘（各进程经 /log insert 推送，单线程顺序写、5000 行截断）。
 - 数据模型已改：`AppConfig` 删 `listMode`/`appList`（规则不存在即默认受管）；`Template` 删 `maxBg`/`cpuFreq`，新增 `cpuThrottle`（0/1/2 档）。
 
@@ -59,21 +59,27 @@
 - `MainActivity` 删除 `ensureShared`（chmod 方案废弃）；`AppRoot` 删除授权后 `HardwareProbe.scan`（能力扫描机制废弃）。
 - `AppConfigProvider.onCreate` 补 `AppStore.init`（provider 可能先于 Activity 启动）。
 
-### 应用进程策略执行器（2026-08-17 新方向，目标 LSPosed 框架，CI 验证通过）
-- `hook/AppPolicyHook.kt`：注入每个用户应用进程，应用内策略：
-  - 后台跟踪：hook `Activity.onResume/onPause` 维护前台计数，确认整应用后台（500ms 延迟判定，防 A->B 切换误判）。
-  - 后台自杀：killDelay 到点后应用自杀（`Process.killProcess` 自身），下次启动为系统冷启动，效果等同删除后台；0 立即杀，<0 不杀；回前台取消。
+### 后台清理与策略执行（2026-08-17 升级：系统层全托管 + 应用自杀，CI 验证通过）
+- `hook/BackgroundKeeper.kt`（system_server，永不挂）：后台清理全局协调：
+  - Hook `setResumedActivityUncheckLocked` 事件驱动检测前台切换（无轮询）；维护后台队列（保序）。
+  - 应用进后台：豁免检查（保护/不受管）后入队；后台数超过 `maxBg` 上限立即处决最早进入后台的应用；按 killDelay 计时（ScheduledExecutor 到点触发，非持续计算），到点处决。
+  - 应用回前台：出队并取消计时。
+  - 处决：经模块 App ContentProvider（insert /bg action=kill）下发命令 -> 目标应用进程观察者收到后自杀。
+- `hook/AppPolicyHook.kt`（注入每个用户应用进程）：
+  - 后台跟踪：hook `Activity.onResume/onPause` 维护前台计数，确认整应用后台（500ms 延迟判定）。
+  - 处决接收：后台期间注册 `/bg` ContentObserver；收到广播后自查仍后台，再 query check 确认被处决则自杀（`Process.killProcess` + `System.exit`）；回前台注销观察者。
   - 后台冻结：cpuThrottle>0 时后台拒绝 `WakeLock.acquire`。
-  - 亮度钳制：brightnessCap 启用时钳制窗口亮度（`WindowManager.LayoutParams.screenBrightness` ≤ cap/255）。
-  - 帧率锁：targetFps 优先，未设时 cpuThrottle>=2 默认 30；hook `Choreographer.getFrameIntervalNanos` 拉大帧间隔。
-  - 动画禁用：animOff 或 cpuThrottle>0 时 `ValueAnimator/Animation.getDuration` 置 0（动画瞬间完成）。
-  - GPS 限制：gpsPolicy=0 全拦、=1 后台拦（`getLastKnownLocation` 返回 null / `requestLocationUpdates` 不注册）。
+  - 亮度钳制：brightnessCap 钳制窗口亮度（`screenBrightness` ≤ cap/255）。
+  - 帧率锁：targetFps 优先，未设时 cpuThrottle>=2 默认 30；hook `Choreographer.getFrameIntervalNanos`。
+  - 动画禁用：animOff 或 cpuThrottle>0 时 `ValueAnimator/Animation.getDuration` 置 0。
+  - GPS 限制：gpsPolicy=0 全拦、=1 后台拦。
   - 蓝牙锁定：btPolicy=0 时本进程拦截 `BluetoothAdapter.enable/setBluetoothEnabled(true)`。
-  - 受保护进程（Protection.isProtected）仅做蓝牙拦截，跳过破坏性策略。
-- `hook/SystemScheduler.kt`：system_server 周期任务（蓝牙锁定检查每 30s）。
-- `hook/BluetoothHook.kt`：系统层蓝牙（system_server）：BluetoothManagerService 开启拦截 + 周期强制关闭。
-- 已废弃并删除：系统层 force-stop 方案（`BackgroundKillHook`/`KillScheduler`）——后台清理改为应用进程自杀。
-- 模板映射：killDelay->自杀倒计时；targetFps/cpuThrottle->帧率；animOff/cpuThrottle->禁动画；brightnessCap->亮度钳制；gpsPolicy->GPS；btPolicy->蓝牙；netPolicy/batterySaver 暂未在应用层实现。
+  - 受保护进程仅做蓝牙拦截。
+- `ui/BackgroundManager.kt`（模块 App，轻量中转）：死刑标记（killNow）+ 处决命令登记/广播 + check 应答；不持有全局队列（队列在 system_server）。
+- `hook/BluetoothHook.kt`（system_server，触发式无轮询）：监听 `/config` 变化；btPolicy=0 立即关闭蓝牙，3s 复查一次，之后靠 enable/setBluetoothEnabled 拦截永久锁定，直到切换模板解锁。
+- 已废弃并删除：`SystemScheduler`（蓝牙 30s 轮询）、系统层 force-stop 方案（`BackgroundKillHook`/`KillScheduler`）。
+- 模板映射：killDelay->后台超时；maxBg->后台进程数上限（AppConfig 字段）；targetFps/cpuThrottle->帧率；animOff/cpuThrottle->禁动画；brightnessCap->亮度钳制；gpsPolicy->GPS；btPolicy->蓝牙；netPolicy/batterySaver 暂未在应用层实现。
+- 日志来源标注：各进程 AppLog.setProcess(包名/system_server/provider)，落盘行含 `[级别/来源]` 与时间戳。
 
 ## 架构（重构目标态）
 
@@ -82,7 +88,7 @@
 - 日志推送：各进程 `AppLog` 写 logcat + XposedBridge，并经 `content://com.power.manager/log` insert 推给 App 统一落盘；App 日志页可滚动查看与复制。
 
 ### 数据模型
-- `AppConfig`：`templates`（Map<Int,Template>）+ `currentTemplateId`（默认 -3）+ `rules`（Map<包名, AppRule>）。
+- `AppConfig`：`templates`（Map<Int,Template>）+ `currentTemplateId`（默认 -3）+ `rules`（Map<包名, AppRule>）+ `maxBg`（最大后台进程数，-1 不限）。
   - `isManaged(pkg, fg)`：规则不存在 → 默认受管；存在 → 按 `enabledFg`/`enabledBg` 裁决。
   - `killDelayFor(pkg, fallback)`：规则 `killDelay >= 0` 优先，否则回退全局模板。
 - `AppRule`（单独应用设置，优先级最高）：`enabledFg` / `enabledBg` / `killDelay`（-1 跟随模板）。
@@ -105,9 +111,10 @@
 - 实时刷新：`AppStore.load()` 每次返回全新实例；写操作一律「`copyOf` 深拷贝 → 改副本 → `save` → 整体替换 state」，杜绝就地改状态导致 Compose 不重组。
 
 ### 策略执行架构（现行，取代旧 system_server 设计）
-- 应用进程内（主）：`AppPolicyHook` 注入每个用户应用，后台自杀/冻结/亮度/帧率/动画/GPS/蓝牙（详见上文「应用进程策略执行器」）。
-- 系统层（最小）：`BluetoothHook`（system_server 强制关闭蓝牙）+ `SystemScheduler`（30s 周期检查）。
-- 旧「Hook 拦截点（重构前设计）」（system_server force-stop / Root 写 CPU 频率等）已废弃，勿再实现。
+- 系统层（协调）：`BackgroundKeeper`（后台队列/超限处决/超时计时，事件驱动无轮询）+ `BluetoothHook`（触发式蓝牙锁定，无轮询）。
+- 应用进程内（执行）：`AppPolicyHook` 注入每个用户应用——后台冻结/亮度/帧率/动画/GPS/蓝牙拦截 + 接收处决指令自杀。
+- 模块 App（轻量中转）：`BackgroundManager` 处决标记应答；`AppLogStore` 日志落盘（来源标注）。
+- 旧「Hook 拦截点（重构前设计）」（system_server force-stop / Root 写 CPU 频率 / 蓝牙 30s 轮询）已废弃，勿再实现。
 
 ### 作用域与模块识别
 - `assets/scopes.txt` 4 行：system / android / com.android.providers.settings / com.android.phone（仅为建议参考）。
@@ -145,3 +152,4 @@
 | 2026-08-17 | **配置互通原生化重构（未提交，中间态）**：删整个 hook/执行器/Root 层与 CpuUtil/LogUtil/全部 hook；新增 ContentProvider 配置/日志通道（AppConfigProvider + ConfigChannel 3s TTL + AppLog 统一日志 + SysContext 任意进程取 Context）；数据模型删名单改「规则缺省即受管」、Template 删 maxBg/cpuFreq 改 cpuThrottle 三档 |
 | 2026-08-17 | **配置互通重构落地（CI 验证通过）**：新增 AppLogStore 统一落盘；manifest 注册 AppConfigProvider；模块入口精简为作用域白名单+日志；AppStore 删除 Root/chmod/CPU/名单旧逻辑；Settings/Home/Edit/Log 全 UI 适配新模型；删除名单模式、异常关机回退、硬件能力扫描与 Root 横幅 UI；提交后 CI 全绿 |
 | 2026-08-17 | **目标是 LSPosed 框架（应用进程策略执行方向，CI 验证通过）**：不依赖 root、少依赖系统层；策略下沉到每个用户应用进程（AppPolicyHook：后台跟踪/自杀/冻结/WakeLock 拒绝/亮度钳制/帧率锁/禁动画/GPS 限制/蓝牙开启拦截）；后台清理改为应用进程自杀（killDelay 到点自杀，切回冷启动，等同删后台），废弃系统层 force-stop；system_server 仅保留蓝牙最小系统层能力；推荐作用域改为全部应用；CI 全绿（run 32039579402） |
+| 2026-08-17 | **后台清理系统层全托管（未提交，待 CI）**：新增 BackgroundKeeper（system_server 检测前台切换/队列/超限处决最早/超时计时，事件驱动无轮询）；AppConfig 新增 maxBg 上限与设置页编辑；处决经 ContentProvider insert /bg 下发，目标应用进程 /bg 观察者收到后自杀（Process.killProcess）；蓝牙改触发式（/config 观察者立即关闭 + 3s 复查 + 拦截永久锁定），删除 30s 轮询 SystemScheduler；通讯日志标注 Binder 来源；日志来源标注 AppLog.setProcess(包名) |

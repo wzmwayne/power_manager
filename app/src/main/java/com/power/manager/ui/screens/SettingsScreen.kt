@@ -4,19 +4,24 @@ import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -32,6 +37,8 @@ import com.power.manager.ui.AppStore
 @Composable
 fun SettingsScreen(padding: PaddingValues, onOpenLog: () -> Unit, onOpenRules: () -> Unit) {
     val context = LocalContext.current
+    var cfg by remember { mutableStateOf(AppStore.load()) }
+    var maxBgTxt by remember { mutableStateOf(if (cfg.maxBg >= 0) cfg.maxBg.toString() else "") }
     var toast by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(toast) {
@@ -69,10 +76,44 @@ fun SettingsScreen(padding: PaddingValues, onOpenLog: () -> Unit, onOpenRules: (
                 Text("应用单独设置（优先于所有规则）")
             }
 
+            Text("后台进程数上限", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "后台应用数量达到上限后，立即处决最早进入后台的应用；其余按模板 killDelay 超时清理。-1 表示不限。",
+                style = MaterialTheme.typography.bodySmall
+            )
+            OutlinedTextField(
+                value = maxBgTxt,
+                onValueChange = { maxBgTxt = it },
+                label = { Text("最大允许后台进程数（-1 不限）") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                modifier = Modifier.fillMaxWidth()
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf("-1", "1", "3", "5", "10").forEach { v ->
+                    OutlinedButton(onClick = { maxBgTxt = v }) { Text(v) }
+                }
+            }
             Button(
                 onClick = {
-                    val next = AppStore.copyOf(AppStore.load())
+                    val value = maxBgTxt.trim().toIntOrNull() ?: -1
+                    val next = AppStore.copyOf(cfg)
+                    next.maxBg = value
+                    AppStore.save(next)
+                    cfg = next
+                    maxBgTxt = if (value >= 0) value.toString() else ""
+                    toast = "后台进程数上限已设为 " + value
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("应用后台进程数上限") }
+
+            HorizontalDivider()
+
+            Button(
+                onClick = {
+                    val next = AppStore.copyOf(cfg)
                     AppStore.resetTemplates(next)
+                    cfg = next
                     toast = "已重置所有模板"
                 },
                 modifier = Modifier.fillMaxWidth()

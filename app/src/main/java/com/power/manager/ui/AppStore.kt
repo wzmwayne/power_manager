@@ -2,6 +2,8 @@ package com.power.manager.ui
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.net.Uri
+import com.power.manager.core.Const
 import com.power.manager.data.AppConfig
 import com.power.manager.data.Template
 
@@ -10,10 +12,25 @@ object AppStore {
     private const val KEY = "config"
     private const val KEY_CONSENT = "consent"
     private lateinit var prefs: SharedPreferences
+    private var appContext: Context? = null
 
     fun init(ctx: Context) {
         if (::prefs.isInitialized) return
         prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        appContext = ctx.applicationContext
+    }
+
+    /** 通知各进程（system_server 蓝牙 / 各应用策略）配置已变化。 */
+    fun notifyConfigChanged() = notify(Const.CONFIG_URI)
+
+    /** 通知后台队列变化（死刑/超限），触发对应应用的指令观察者。 */
+    fun notifyBgChanged() = notify(Const.BG_URI)
+
+    private fun notify(uri: String) {
+        try {
+            appContext?.contentResolver?.notifyChange(Uri.parse(uri), null)
+        } catch (e: Throwable) {
+        }
     }
 
     fun isConsented(): Boolean = prefs.getBoolean(KEY_CONSENT, false)
@@ -30,6 +47,7 @@ object AppStore {
 
     fun save(cfg: AppConfig) {
         prefs.edit().putString(KEY, cfg.toJson()).commit()
+        notifyConfigChanged()
     }
 
     /** 深拷贝：可变容器全部换新实例，避免就地修改状态对象导致 Compose 不重组。 */

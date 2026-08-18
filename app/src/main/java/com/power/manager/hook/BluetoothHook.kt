@@ -1,26 +1,34 @@
 package com.power.manager.hook
 
 import android.bluetooth.BluetoothAdapter
+import android.database.ContentObserver
+import android.net.Uri
+import android.os.Handler
+import android.os.Looper
 import com.power.manager.core.AppLog
 import com.power.manager.core.ConfigChannel
+import com.power.manager.core.Const
+import com.power.manager.core.SysContext
 import de.robv.android.xposed.XC_MethodHook
 import de.robv.android.xposed.XposedBridge
 import de.robv.android.xposed.XposedHelpers
 
 /**
  * 系统层蓝牙禁用与锁定（仅注入 system_server，目标 LSPosed 框架下保留的最小系统层能力）：
- * 1. 主动关闭蓝牙连接：模板 btPolicy=0 时，周期任务发现蓝牙开启即强制 disable。
- * 2. 锁定禁用：拦截 BluetoothManagerService 的 enable/enableNoAutoConnect/setBluetoothEnabled(true)，
- *    任何应用或用户都无法重新开启蓝牙；btPolicy=1 时停止拦截与强关（还原用户自由）。
- * 应用进程内的开启拦截见 AppPolicyHook（hook 各应用 BluetoothAdapter.enable/setBluetoothEnabled）。
+ * - 触发式：监听 /config 变化（模板切换）。btPolicy=0 时立即关闭蓝牙，3 秒后复查一次；
+ *   此后不再主动动作（无轮询、无反复尝试关闭），依靠 enable/setBluetoothEnabled 拦截永久锁定，
+ *   直到切换到不禁用蓝牙的模板（btPolicy != 0 时拦截放行）。
+ * - 应用进程内的开启拦截见 AppPolicyHook（hook 各应用 BluetoothAdapter.enable/setBluetoothEnabled）。
  */
 object BluetoothHook {
+
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     @Volatile
     private var service: Any? = null
 
     @Volatile
-    private var lastPolicy: Int = -1
+    private var configObserver: ContentObserver? = null
 
     fun hook() {
         val candidates = listOf(
@@ -40,6 +48,57 @@ object BluetoothHook {
             } catch (e: Throwable) {
                 AppLog.w("BluetoothHook 注册失败：" + cn + " " + e.message)
             }
+        }
+        registerConfigObserver()
+    }
+
+    /** 监听配置变化：模板切换触发蓝牙立即关闭（不再轮询）。 */
+    private fun registerConfigObserver() {
+        try {
+            if (configObserver != null) return
+            val resolver = SysContext.contentResolver() ?: return
+            val obs = object : ContentObserver(mainHandler) {
+                override fun onChange(selfChange: Boolean) {
+                    try {
+                        onConfigChanged()
+                    } catch (e: Throwable) {
+                        AppLog.e(e, "配置变化蓝牙处理异常")
+                    }
+                }
+            }
+            configObserver = obs
+            resolver.registerContentObserver(Uri.parse(Const.CONFIG_URI), true, obs)
+            AppLog.i("蓝牙配置观察者已注册（模板切换触发关闭，无轮询）")
+        } catch (e: Throwable) {
+            AppLog.w("蓝牙配置观察者注册失败：" + e.message)
+        }
+    }
+
+    /** 模板切换处理：btPolicy=0 立即关闭，3s 后复查一次，之后靠拦截永久锁定。 */
+    private fun onConfigChanged() {
+        try {
+            ConfigChannel.invalidate()
+            val policy = btPolicy()
+            AppLog.i("配置变化触发蓝牙检查：btPolicy=" + policy)
+            if (policy == 0) {
+                AppLog.i("btPolicy=0，立即关闭蓝牙")
+                forceDisable()
+                mainHandler.postDelayed({
+                    AppLog.i("蓝牙关闭 3s 复查：btPolicy=" + btPolicy())
+                    if (btPolicy() == 0) {
+                        if (isBluetoothOn()) {
+                            AppLog.w("蓝牙 3s 复查仍开启，再次关闭（最后一次主动动作，之后靠拦截锁定）")
+                            forceDisable()
+                        } else {
+                            AppLog.i("蓝牙已确认关闭，进入永久锁定（拦截一切开启请求）")
+                        }
+                    }
+                }, 3000)
+            } else {
+                AppLog.i("btPolicy=" + policy + "，蓝牙解锁（不再拦截开启）")
+            }
+        } catch (e: Throwable) {
+            AppLog.e(e, "配置变化蓝牙处理异常")
         }
     }
 
@@ -114,30 +173,6 @@ object BluetoothHook {
                 AppLog.i("蓝牙关闭请求到达：放行")
             }
         })
-    }
-
-    /** 周期检查（SystemScheduler 每 30s 调用）：刷新配置，锁定中强制关闭蓝牙。 */
-    fun periodicCheck() {
-        try {
-            ConfigChannel.invalidate()
-            val policy = btPolicy()
-            if (policy != lastPolicy) {
-                AppLog.i("蓝牙策略变更：" + lastPolicy + " -> " + policy)
-                lastPolicy = policy
-            }
-            if (policy == 0) {
-                val on = isBluetoothOn()
-                AppLog.i("蓝牙锁定周期检查：btPolicy=0，蓝牙当前" + if (on) "开启" else "关闭")
-                if (on) {
-                    AppLog.i("蓝牙仍处于开启状态，强制执行关闭")
-                    forceDisable()
-                }
-            } else {
-                AppLog.d("蓝牙周期检查：btPolicy=" + policy + "（未锁定，不干预）")
-            }
-        } catch (e: Throwable) {
-            AppLog.e(e, "蓝牙周期检查异常")
-        }
     }
 
     /** 当前激活模板的蓝牙策略：0=关闭锁定，1=保持放行。 */

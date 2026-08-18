@@ -6,7 +6,9 @@ import org.json.JSONObject
 data class AppConfig(
     val templates: MutableMap<Int, Template>,
     var currentTemplateId: Int = -3,
-    val rules: MutableMap<String, AppRule>
+    val rules: MutableMap<String, AppRule>,
+    /** 最大允许后台进程数（-1 不限）；超过时立即处决最早进入后台的应用。 */
+    var maxBg: Int = -1
 ) {
     /** 作用域即全部受管应用。规则不存在时默认受管，存在时按前台/后台启用标志裁决。 */
     fun isManaged(pkg: String, foreground: Boolean): Boolean {
@@ -28,6 +30,7 @@ data class AppConfig(
         for ((id, v) in templates) t.put(id.toString(), v.toJson())
         o.put("templates", t)
         o.put("current", currentTemplateId)
+        o.put("max_bg", maxBg)
         val r = JSONObject()
         for ((pkg, v) in rules) r.put(pkg, v.toJson())
         o.put("rules", r)
@@ -43,7 +46,8 @@ data class AppConfig(
             return AppConfig(
                 templates = t,
                 currentTemplateId = -3,
-                rules = mutableMapOf()
+                rules = mutableMapOf(),
+                maxBg = -1
             )
         }
 
@@ -67,7 +71,8 @@ data class AppConfig(
                 AppConfig(
                     templates = t,
                     currentTemplateId = o.optInt("current", -3),
-                    rules = rules
+                    rules = rules,
+                    maxBg = o.optInt("max_bg", -1)
                 )
             } catch (e: Throwable) {
                 default()
